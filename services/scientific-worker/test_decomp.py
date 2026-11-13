@@ -276,6 +276,150 @@ class Review(Base):
         self.assertTrue(any("BUNIT" in n for n in head["record"]["notes"]))
 
 
+NAMED = {**CUBES, "source": {"kind": "fits_maps", "componentAxis": 3,
+                             "maps": {"amplitude": {"hdu": "AMP", "extver": 1}, "centre": {"hdu": "CENTRE"}, "width": {"hdu": "fwhm"}}}}
+NAMED_FILES = {p: ["synth_decomp_ext.fits"] for p in ("amplitude", "centre", "width")}
+
+
+class NamedHdus(Base):
+    """The three maps are HDUs of one file found by EXTNAME (and EXTVER). The file holds a decoy AMP HDU (EXTVER 2, ten times the
+    amplitudes) ahead of the real one, so reading the first HDU of that name would give the wrong numbers."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.named = cls.dir / "named_hdus"
+
+    def named_pixel(self, x, y, decl=NAMED, files=NAMED_FILES):
+        return self.pixel(x, y, decl, files, self.named)
+
+    def test_a_name_and_an_extver_pick_the_hdu_and_the_numbers_are_the_closed_form(self):
+        for x, y in ((0, 0), (3, 2), (6, 4)):
+            head, payload = self.named_pixel(x, y)
+            self.assertTrue(head["ok"] and head["drawn"], head)
+            for k, comp in enumerate(head["components"]):
+                a = self.t["amp"][k, y, x]
+                if np.isnan(a):
+                    self.assertFalse(comp["present"])
+                    continue
+                self.assertAlmostEqual(comp["amp"], a, places=12)                        # AMP EXTVER 1, not the decoy (10 x)
+                self.assertAlmostEqual(comp["centre"], self.t["centre_kms"][k, y, x], places=9)
+                self.assertAlmostEqual(comp["sigma"], self.t["fwhm_kms"][k, y, x] / FWHM, places=9)
+            ref, pref = self.pixel(x, y)                                                 # the same fit as separate files by number
+            self.assertEqual(head["components"], ref["components"])
+            self.assertEqual(payload, pref)
+
+    def test_the_decoy_version_is_read_when_it_is_the_one_declared(self):
+        decl = json.loads(json.dumps(NAMED))
+        decl["source"]["maps"]["amplitude"]["extver"] = 2
+        head, _ = self.named_pixel(3, 2, decl)
+        self.assertAlmostEqual(head["components"][0]["amp"], 10.0 * self.t["amp"][0, 2, 3], places=11)
+
+    def test_the_review_reads_named_hdus_the_same_way(self):
+        a = self.analysis("rohsa_sigmav", velocity_bins=V_BINS, sigma_bins=S_BINS)[1]["summary"]
+        code, r = self.analysis("rohsa_sigmav", decl=NAMED, files=NAMED_FILES, folder=self.named, velocity_bins=V_BINS, sigma_bins=S_BINS)
+        self.assertEqual(code, 0, r)
+        self.assertEqual(a["cells"], r["summary"]["cells"])
+
+    def refused(self, edit, words):
+        decl = json.loads(json.dumps(NAMED))
+        edit(decl["source"]["maps"])
+        head, _ = self.named_pixel(3, 2, decl)
+        self.assertFalse(head["ok"], head)
+        self.assertIn(words, head["error"])
+        return head["error"]
+
+    def test_a_name_that_two_hdus_carry_is_refused_not_resolved_to_the_first(self):
+        msg = self.refused(lambda m: m["amplitude"].pop("extver"), "2 HDUs named 'AMP'")
+        self.assertIn("EXTVER 2", msg)
+        self.assertIn("EXTVER 1", msg)
+
+    def test_a_missing_name_or_version_is_refused(self):
+        self.refused(lambda m: m["centre"].update(hdu="VELOCITY"), "no HDU named 'VELOCITY'")
+        self.refused(lambda m: m["amplitude"].update(extver=3), "no HDU named 'AMP' with EXTVER 3")
+        self.refused(lambda m: m["centre"].update(extver=2), "no HDU named 'CENTRE' with EXTVER 2")     # an absent EXTVER card counts as 1, not as any
+        self.refused(lambda m: m["amplitude"].update(hdu=9, extver=None), "no HDU number 9")
+
+    def test_an_hdu_that_is_not_an_image_is_refused(self):
+        self.refused(lambda m: m["amplitude"].update(hdu="AMPTAB", extver=None), "is not an image")
+
+    def test_the_component_axis_is_never_reordered_to_the_declared_one(self):
+        decl = json.loads(json.dumps(NAMED))
+        decl["source"]["componentAxis"] = 1
+        head, _ = self.named_pixel(3, 2, decl)
+        self.assertFalse(head["ok"])
+        self.assertIn("axes", head["error"])
+
+    def test_extver_is_only_valid_with_a_name(self):
+        for bad in ({"hdu": 1, "extver": 1}, {"hdu": "AMP", "extver": 0}, {"hdu": "AMP", "extver": "1"}, {"hdu": "AMP", "extver": True}):
+            decl = json.loads(json.dumps(NAMED))
+            decl["source"]["maps"]["amplitude"] = bad
+            with self.assertRaises(decomp.Bad):
+                decomp.parse(decl)
+
+
+class PixelIndex(Base):
+    """A click on a cell of the diagram reads the pixel index the diagram wrote, for maps as for a .dat: no map is opened, and a map that
+    changed since the diagram was drawn is a refusal that says to draw it again (the index's key holds every map's path, size and time)."""
+
+    def setUp(self):
+        import gaussreview as gr
+        from plane_worker import cube_for, decomposition_grid
+        self.gr = gr
+        self.folder = Path(self.tmp.name) / "indexed"
+        g.write_synth_decomp_run(self.folder)
+        self.cache_dir = tempfile.mkdtemp(dir=self.cache.name)
+        c = cube_for(str(self.folder / "synth_cube.fits"))
+        self.grid, _, _, axis = decomposition_grid(c)
+        self.sc = gr.Scales(c.channels, self.grid.w0, self.grid.step, axis, "K", "crop", self.grid.specsys)
+        self.nx, self.ny = c.shape[c.x], c.shape[c.y]
+        self.c_hdr = c.h
+        self.v, self.s = gr.linear_edges(V_BINS, "centre"), gr.linear_edges(S_BINS, "width")
+
+    def open(self):
+        return decomp.open_decomposition({"decomposition": {"declaration": CUBES, "files": CUBE_FILES}}, self.grid, self.nx, self.ny, g.DN,
+                                         str(self.folder), lambda p: p, self.c_hdr)
+
+    def test_a_cell_click_opens_no_map_and_equals_the_full_read(self):
+        gr = self.gr
+        gr.sigmav(self.open(), self.nx, self.ny, g.DN, self.sc, "count", self.v, self.s, cache_dir=self.cache_dir)
+        want, _ = Review.expected(self, "count")
+        reads, original = [0], decomp.MapsSource._read
+        decomp.MapsSource._read = lambda me, *a: (reads.__setitem__(0, reads[0] + 1), original(me, *a))[1]
+        try:
+            for (js, iv) in sorted(want)[:3]:
+                m = gr.cell_mask(self.open(), self.nx, self.ny, g.DN, self.sc, self.v, self.s, js, iv, self.cache_dir)
+                self.assertEqual(reads[0], 0)                                           # the index, not the maps
+                self.assertEqual(m["source"], "pixel index written by the diagram")
+                ref = gr.cell_mask_stream(self.open(), self.nx, self.ny, g.DN, self.sc, self.v, self.s, js, iv)
+                self.assertEqual((m["pixels"], m["components"]), (ref["pixels"], ref["components"]))
+                np.testing.assert_array_equal(gr.unpack_mask(m["mask"]), gr.unpack_mask(ref["mask"]))
+                self.assertEqual(m["components"], want[(js, iv)][0])
+                reads[0] = 0
+        finally:
+            decomp.MapsSource._read = original
+
+    def test_a_changed_map_invalidates_the_index(self):
+        gr = self.gr
+        gr.sigmav(self.open(), self.nx, self.ny, g.DN, self.sc, "count", self.v, self.s, cache_dir=self.cache_dir)
+        gr.cell_mask(self.open(), self.nx, self.ny, g.DN, self.sc, self.v, self.s, 0, 0, self.cache_dir)
+        path = self.folder / "synth_decomp_centre.fits"
+        st = path.stat()
+        import os
+        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+        with self.assertRaises(gr.Refusal) as cm:
+            gr.cell_mask(self.open(), self.nx, self.ny, g.DN, self.sc, self.v, self.s, 0, 0, self.cache_dir)
+        self.assertIn("draw the diagram again", str(cm.exception))
+
+    def test_a_different_declaration_is_a_different_index(self):
+        gr = self.gr
+        gr.sigmav(self.open(), self.nx, self.ny, g.DN, self.sc, "count", self.v, self.s, cache_dir=self.cache_dir)
+        other = decomp.open_decomposition({"decomposition": {"declaration": {**CUBES, "width": {"kind": "sigma", "unit": "km/s"}}, "files": CUBE_FILES}},
+                                          self.grid, self.nx, self.ny, g.DN, str(self.folder), lambda p: p, self.c_hdr)
+        with self.assertRaises(gr.Refusal):
+            gr.cell_mask(other, self.nx, self.ny, g.DN, self.sc, self.v, self.s, 0, 0, self.cache_dir)
+
+
 class Declaration(unittest.TestCase):
     def test_the_shipped_rohsa_profile_declares_what_the_worker_reads_by_default(self):
         data = json.loads((HERE.parent / "api" / "internal" / "runs" / "run_profiles.json").read_text())

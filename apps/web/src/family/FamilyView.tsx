@@ -13,19 +13,20 @@ import type { RampId } from "../viewer/colormaps";
 import { rampCss } from "../viewer/channelGrid";
 import { axialDegrees } from "../viewer/render";
 import { FamilyMap } from "./FamilyMap";
+import { FamilyMapsCleanup } from "./FamilyMapsCleanup";
 import type { Cursor } from "./FamilyMap";
 import { AXIAL_DIFFERENCE_RANGE, optionLabel, sharedRange, spreadRange, symmetricRange, valueText } from "./familyScale";
 import { EM } from "../catalog/format";
 import s from "./Family.module.css";
 
 /** Members chosen elsewhere (a sweep, a recognised family) and the names to show for them. */
-export type FamilyPreset = { nonce: number; ids: number[]; labels?: Record<number, string>; referenceId?: number; title?: string };
+export type FamilyPreset = { nonce: number; ids: number[]; labels?: Record<number, string>; referenceId?: number; title?: string; excluded?: { label: string; reason: string }[] };
 
 const MAX = 12;
 const num = (v: number | null | undefined, digits = 4) => (v === null || v === undefined ? EM : String(Number(v.toPrecision(digits))));
 
 /** Maps that differ in one parameter, side by side on one scale, with how well they agree (ADR 0070). Nothing is resampled: maps on different grids are refused. */
-export function FamilyView({ datasets, preset }: { datasets: Dataset[]; preset: FamilyPreset | null }) {
+export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: Dataset[]; preset: FamilyPreset | null; onCatalogChanged?: () => void }) {
   const images = useMemo(() => datasets.filter(isImage).filter((d) => !d.archived), [datasets]);
   const [ids, setIds] = useState<number[]>([]);
   const [labels, setLabels] = useState<Record<number, string>>({});
@@ -39,6 +40,7 @@ export function FamilyView({ datasets, preset }: { datasets: Dataset[]; preset: 
   const queued = useQueueReason(busy, rid);
   const [err, setErr] = useState<string | null>(null);
   const [reasons, setReasons] = useState<string[]>([]);
+  const [excluded, setExcluded] = useState<{ label: string; reason: string }[]>([]);
   const [result, setResult] = useState<{ r: FamilyResult; channel: number; names: string[]; axial: boolean } | null>(null);
 
   useEffect(() => {
@@ -49,6 +51,7 @@ export function FamilyView({ datasets, preset }: { datasets: Dataset[]; preset: 
     setIds(preset.ids.slice(0, MAX));
     setLabels(preset.labels ?? {});
     setReferenceId(preset.referenceId ?? preset.ids[0] ?? null);
+    setExcluded(preset.excluded ?? []);
     setResult(null);
     setErr(null);
   }, [preset?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -73,6 +76,7 @@ export function FamilyView({ datasets, preset }: { datasets: Dataset[]; preset: 
     setIds(next.slice(0, MAX));
     setLabels(lab);
     setReferenceId(next[0] ?? null);
+    setExcluded([]);
     setResult(null);
     setErr(null);
   }
@@ -98,7 +102,13 @@ export function FamilyView({ datasets, preset }: { datasets: Dataset[]; preset: 
   return (
     <div className={s.root}>
       <h2 className={s.h}>{preset?.title ?? "Family of maps"}</h2>
-      <p className={s.note}>Maps that differ in one parameter, side by side on one colour scale, with how well they agree. They must share a grid: nothing is resampled here. Choose scalar maps, or maps declared as axial orientations; the two are not mixed.</p>
+      <p className={s.note}>Maps that differ in one parameter, side by side on one colour scale, with how well they agree. They must share a grid: nothing is resampled here. Choose scalar maps, or maps declared as axial orientations; the two are not mixed. The maps must be in one place: all on this computer, or all on one host, where they are compared without being copied.</p>
+      {excluded.length > 0 ? (
+        <section aria-label="Left out of this family" className={s.block}>
+          <h3 className={s.h3}>Left out of this family, not compared</h3>
+          <ul className={s.cands}>{excluded.map((x, i) => <li key={i}><strong>{x.label}</strong> <span className={s.note}>{x.reason}</span></li>)}</ul>
+        </section>
+      ) : null}
       {cands.length > 0 ? (
         <section aria-label="Families found in your results" className={s.block}>
           <h3 className={s.h3}>Found in your results</h3>
@@ -149,6 +159,7 @@ export function FamilyView({ datasets, preset }: { datasets: Dataset[]; preset: 
         {reasons.length > 0 ? <ul className={s.note}>{reasons.map((r) => <li key={r}>{r}</li>)}</ul> : null}
       </section>
       {result ? <FamilyResultView result={result.r} channel={result.channel} names={result.names} axial={result.axial} datasets={byId} /> : null}
+      <FamilyMapsCleanup refreshKey={result} onChanged={(gone) => { setResult((r) => (r && r.r.maps.some((m) => gone.includes(m.dataset.id)) ? null : r)); /* its maps no longer exist */ onCatalogChanged?.(); }} />
     </div>
   );
 }

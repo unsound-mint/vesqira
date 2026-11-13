@@ -7,14 +7,17 @@ import type { Sweep, SweepReview } from "../api/sweeps";
 import { TONE } from "../jobs/JobsView";
 import { parseMem } from "../jobs/usageText";
 import { SweepGrid } from "./SweepGrid";
+import { SweepFamilyPanel } from "../family/SweepFamilyPanel";
+import type { FamilyPreset } from "../family/FamilyView";
 import s from "./Sweeps.module.css";
 
 const SWEEP_TONE = { draft: "neutral", running: "accent", stopped: "warn", finished: "ok" } as const;
 const KIND_TEXT = { parameter: "swept setting", output: "output folder (set per job)", name: "job name (set per job)", other: "NOT EXPECTED" } as const;
 
 /** One sweep: its jobs, the submit dialog, cancel, the board, and the grid of declared metrics. */
-export function SweepView({ sweep, onChange, onOpenJob, onBoard }: { sweep: Sweep; onChange: (s: Sweep) => void; onOpenJob: (id: number) => void; onBoard?: (boardId: number) => void }) {
+export function SweepView({ sweep, onChange, onOpenJob, onBoard, onOpenFamily }: { sweep: Sweep; onChange: (s: Sweep) => void; onOpenJob: (id: number) => void; onBoard?: (boardId: number) => void; onOpenFamily?: (p: FamilyPreset) => void }) {
   const [dialog, setDialog] = useState(false);
+  const [showFamily, setShowFamily] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
@@ -60,8 +63,10 @@ export function SweepView({ sweep, onChange, onOpenJob, onBoard }: { sweep: Swee
         {sweep.boardId === null ? (
           <Button disabled={busy} onClick={() => act(() => sweepBoard(sweep.id), (b) => { onChange({ ...sweep, boardId: b.id }); onBoard?.(b.id); })}>Make a board from this sweep</Button>
         ) : onBoard ? <Button onClick={() => onBoard(sweep.boardId!)}>Open its board</Button> : <span className={s.note}>A board was made from this sweep (Boards).</span>}
+        {onOpenFamily ? <Button aria-expanded={showFamily} onClick={() => setShowFamily((v) => !v)}>Compare outputs as a family</Button> : null}
         <Button disabled={busy} onClick={() => void reload()}>Refresh</Button>
       </div>
+      {showFamily && onOpenFamily ? <SweepFamilyPanel sweepId={sweep.id} onOpen={onOpenFamily} /> : null}
       {err ? <p role="alert" className={s.err}>{err}</p> : null}
       <SweepGrid sweepId={sweep.id} refreshKey={tick} />
       {dialog ? <SubmitDialog sweep={sweep} onClose={() => setDialog(false)} onSubmitted={(x) => { setDialog(false); onChange(x); }} /> : null}

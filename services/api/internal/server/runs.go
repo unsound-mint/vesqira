@@ -30,6 +30,10 @@ type runSource interface {
 	RecordFile() string                                                           // the name of the run record, which a tool profile claims (run_metadata.toml for VGT.jl)
 	Meta(ctx context.Context) (data []byte, dirName string, code int, msg string) // the run record and the folder's name
 	Register(ctx context.Context, name string) (d catalog.Dataset, found bool, code int, msg string)
+	// HostID is 0 on this machine. Folder is the run folder's real path on its machine and the names of the files in it (a
+	// decomposition written as FITS maps is picked out of them); a host that does not answer is an error code, not an empty folder.
+	HostID() int64
+	Folder(ctx context.Context) (real string, names []string, code int, msg string)
 }
 
 type localRun struct {
@@ -50,6 +54,20 @@ func (l localRun) Meta(context.Context) ([]byte, string, int, string) {
 		return nil, "", 422, "the run metadata cannot be read"
 	}
 	return data, filepath.Base(l.dir), 0, ""
+}
+func (l localRun) HostID() int64 { return 0 }
+func (l localRun) Folder(context.Context) (string, []string, int, string) {
+	ents, err := os.ReadDir(l.dir)
+	if err != nil {
+		return "", nil, 422, "the run's folder cannot be read"
+	}
+	var names []string
+	for _, e := range ents {
+		if !e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	return l.dir, names, 0, ""
 }
 func (l localRun) Register(ctx context.Context, name string) (catalog.Dataset, bool, int, string) {
 	real, err := l.s.roots(wsCtx(ctx)).Resolve(filepath.Join(l.dir, name)) // outputs must sit next to the metadata, inside the roots
@@ -84,6 +102,26 @@ func (r remoteRun) Meta(ctx context.Context) ([]byte, string, int, string) {
 		return nil, "", code, msg
 	}
 	return []byte(text), path.Base(r.dir), 0, ""
+}
+func (r remoteRun) HostID() int64 { return r.h.ID }
+
+// remoteListLimit is how many entries the host's worker lists for one folder (plane_worker.host_op "list"): a folder that fills it
+// may have more, and a layout picked out of its names would be built from part of them.
+const remoteListLimit = 500
+
+func (r remoteRun) Folder(ctx context.Context) (string, []string, int, string) {
+	real, files, dirs, err := r.s.remoteList(ctx, r.h, r.dir)
+	switch {
+	case ctx.Err() != nil:
+		return "", nil, 502, "the import was interrupted before it finished; nothing was saved"
+	case err != nil:
+		return "", nil, 502, "the host is not reachable (is the VPN up?)"
+	case real == "":
+		return "", nil, 403, "not available"
+	case len(files)+len(dirs) >= remoteListLimit:
+		return "", nil, 422, fmt.Sprintf("the run's folder holds %d or more entries, more than are listed on a host; the files are not picked out of a part of them", remoteListLimit)
+	}
+	return real, files, 0, ""
 }
 func (r remoteRun) Register(ctx context.Context, name string) (catalog.Dataset, bool, int, string) {
 	d, code, msg := r.s.registerRemoteFile(ctx, r.h, path.Join(r.dir, name))

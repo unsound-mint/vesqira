@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { API } from "../ports";
+import { API, REVIEW } from "../ports";
 
 // The sky panel (ADR 0072) through the real API, worker and built app, with the survey background OFF, which is its default. The
 // run has no external network by design: every request that leaves this machine is blocked and counted, and none may be attempted
@@ -117,4 +117,51 @@ test("the sky panel works offline, draws footprints from the WCS, links the curs
     }
   }
   expect(attempts).toEqual([]);
+});
+
+test("the sky view is saved as a figure with no survey image, goes on a board, and the reviewer reads what it is and what it is not", async ({ page, request, browser }) => {
+  const cube = await ensure(request, FILES[0]!);
+  const attempts = await blockExternal(page);
+  await page.goto("/");
+  await page.evaluate(() => localStorage.removeItem("vesqira.sky.v1"));
+  await page.reload();
+  await page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: /^hi_cube\.fits/ }).first().click();
+  await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("complementary", { name: "Inspector" }).getByRole("button", { name: "Sky", exact: true }).click();
+  const panel = page.getByTestId("sky-panel");
+  await expect(outline(panel, cube)).toBeVisible();
+
+  await panel.getByRole("button", { name: "Save as figure" }).click();
+  await expect(panel.getByRole("status").filter({ hasText: /Saved as the figure/ })).toContainText("It has no survey image");
+  expect(attempts).toEqual([]);
+
+  // the figure is a record with no dataset of its own; its provenance names the files and states there is no survey image
+  const figs = ((await (await request.get(`${API}/api/figures`)).json()) as { figures: { id: number; kind: string; title: string; provenance: { statements?: string[]; sky?: { background: unknown; footprints: unknown[] } } }[] }).figures;
+  const fig = figs.filter((f) => f.kind === "sky").at(-1)!;
+  expect(fig.provenance.sky?.background).toBeNull();
+  expect(fig.provenance.sky?.footprints.length).toBeGreaterThan(0);
+
+  const board = (await (await request.post(`${API}/api/boards`, { data: { title: "Sky board" } })).json()) as { id: number };
+  expect((await request.post(`${API}/api/boards/${board.id}/items`, { data: { figureId: fig.id } })).status()).toBe(200);
+  const pub = await request.post(`${API}/api/boards/${board.id}/publish`, { data: { label: "sky", hours: 1, confirmAccess: true } });
+  expect(pub.status()).toBe(201);
+  const { reviewPath } = (await pub.json()) as { reviewPath: string };
+
+  for (const [w, h] of [[1440, 900], [390, 844]] as const) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h } });
+    const sup = await ctx.newPage();
+    await sup.goto(`${REVIEW}${reviewPath}`);
+    await expect(sup.getByRole("heading", { name: "Sky board" })).toBeVisible();
+    await expect(sup.getByText(/No survey image/).first()).toBeVisible();
+    await expect(sup.getByText(/Source: /).first()).toBeVisible();
+    const body = await sup.locator("body").innerText();
+    expect(body).not.toMatch(/datasetId|subsetId/);
+    for (const scheme of ["light", "dark"] as const) {
+      await sup.emulateMedia({ colorScheme: scheme });
+      const axe = await new AxeBuilder({ page: sup as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).analyze();
+      expect(axe.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
+      await sup.screenshot({ path: path.join(shots, `sky-figure-review-${scheme}-${w}.png`), fullPage: true });
+    }
+    await ctx.close();
+  }
 });

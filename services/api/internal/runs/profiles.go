@@ -467,6 +467,17 @@ func (r *Registry) ByRecord(name, reader string, data []byte) *Profile {
 	return nil
 }
 
+// ByRecordFile is the first profile with that exact record file name and reader, whatever the record holds: for a record that has not
+// been read (a host's folder listing). A caller that has the record's bytes uses ByRecord.
+func (r *Registry) ByRecordFile(name, reader string) *Profile {
+	for _, p := range r.profiles {
+		if p.Record != nil && p.Record.Reader == reader && p.Record.File == name {
+			return p
+		}
+	}
+	return nil
+}
+
 // HasRecordFile says whether some profile reads a record of that exact name with that reader.
 func (r *Registry) HasRecordFile(name, reader string) bool {
 	for _, p := range r.profiles {

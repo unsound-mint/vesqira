@@ -330,5 +330,64 @@ class Subset(unittest.TestCase):
         self.assertEqual(path.read_bytes(), before)
 
 
+class SubsetSky(unittest.TestCase):
+    """The sky panel's footprint and cursor over a window (ADR 0072). The oracles are astropy on the source header at source pixels
+    x0 + step*i (the subset's own pixel centres), and the footprint of the materialised file."""
+    setUpClass = classmethod(Subset.setUpClass.__func__)
+    tearDownClass = classmethod(Subset.tearDownClass.__func__)
+    source = Subset.source
+
+    @staticmethod
+    def world(header, x, y, frame):
+        sc = WCS(header).celestial.pixel_to_world(np.array([x], dtype=float), np.array([y], dtype=float)).transform_to(frame)
+        return float(sc.spherical.lon.deg[0]), float(sc.spherical.lat.deg[0])
+
+    @staticmethod
+    def sep(frame, a, b):
+        from astropy.coordinates import SkyCoord
+        return SkyCoord(a[0], a[1], unit="deg", frame=frame).separation(SkyCoord(b[0], b[1], unit="deg", frame=frame)).arcsec
+
+    def test_window_footprint_and_cursor_are_the_sources_wcs_at_the_windows_pixels(self):
+        for name in ("hi_cube.fits", "hi_cube_rotated.fits", "cd_cube.fits"):
+            for frame in ("icrs", "galactic"):
+                for window in (BOX, {"x0": 1, "x1": 10, "y0": 0, "y1": 9, "step": 4}, {"x0": 2, "x1": 9, "y0": 3, "y1": 12}):
+                    with self.subTest(name=name, frame=frame, window=window):
+                        _, header = self.source(name)
+                        path = self.f[name]
+                        rep = pw.Cube(str(path), None, window).win_report()
+                        x0, y0, step, nx, ny = rep["x0"], rep["y0"], rep["step"], rep["width"], rep["height"]
+                        hd, _ = self.client.ask(op="sky_footprint", path=str(path), window=window, frame=frame)
+                        self.assertTrue(hd["ok"], hd)
+                        poly = [(a % 360.0, b) for a, b in hd["footprint"]["polygon"]]
+                        # the first vertex is the outer corner of the subset's first pixel: source pixel x0 - step/2, y0 - step/2
+                        self.assertLess(self.sep(frame, poly[0], self.world(header, x0 - 0.5 * step, y0 - 0.5 * step, frame)), 0.05)
+                        far = self.world(header, x0 + (nx - 0.5) * step, y0 + (ny - 0.5) * step, frame)
+                        self.assertLess(min(self.sep(frame, p, far) for p in poly), 0.05)
+                        # the cursor: subset pixel (i, j) is source pixel (x0 + i*step, y0 + j*step)
+                        for i, j in ((0, 0), (nx - 1, ny - 1), (nx // 2, 1)):
+                            hp, _ = self.client.ask(op="sky_point", path=str(path), window=window, frame=frame, x=i, y=j)
+                            self.assertTrue(hp["ok"], hp)
+                            got = (hp["position"]["lon"], hp["position"]["lat"])
+                            self.assertLess(self.sep(frame, got, self.world(header, x0 + i * step, y0 + j * step, frame)), 0.05)
+
+    def test_window_footprint_equals_the_materialised_files(self):
+        window = {"x0": 3, "x1": 20, "y0": 2, "y1": 15, "step": 2}
+        for name in ("hi_cube_rotated.fits", "cd_cube.fits"):
+            with self.subTest(name):
+                out = self.dir / f"sky_sub_{name}"
+                code, r = materialise(self.f[name], window, out)
+                self.assertEqual(code, 0, r)
+                a, _ = self.client.ask(op="sky_footprint", path=str(self.f[name]), window=window, frame="icrs")
+                b, _ = self.client.ask(op="sky_footprint", path=str(out), frame="icrs")
+                np.testing.assert_allclose(a["footprint"]["polygon"], b["footprint"]["polygon"], rtol=0, atol=1e-9)
+
+    def test_a_window_is_smaller_than_its_source(self):
+        path = self.f["hi_cube.fits"]
+        full, _ = self.client.ask(op="sky_footprint", path=str(path), frame="icrs")
+        part, _ = self.client.ask(op="sky_footprint", path=str(path), window={"x0": 3, "x1": 8, "y0": 2, "y1": 7}, frame="icrs")
+        self.assertLess(part["footprint"]["extent_deg"], full["footprint"]["extent_deg"])
+        self.assertEqual(part["window"]["x0"], 3)
+
+
 if __name__ == "__main__":
     unittest.main()

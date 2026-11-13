@@ -34,7 +34,8 @@ const (
 	maxTotal      = 64 << 30
 )
 
-var dataDirs = []string{"figures", "derived", "managed"}
+// attachments are the images of reports (an archive made before they were included has none: it restores and imports as before)
+var dataDirs = []string{"figures", "derived", "managed", "attachments"}
 
 type File struct {
 	Path   string `json:"path"`

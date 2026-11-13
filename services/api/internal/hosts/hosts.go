@@ -343,6 +343,7 @@ func (m *Manager) Deploy(ctx context.Context, h Host) error {
 	cmd := exec.CommandContext(ctx, m.Ssh, append(m.sshArgs(h), "sh -c "+quote(remote))...) // sh -c: the login shell may not be POSIX
 	cmd.Env = append([]string{"PATH=/usr/bin:/bin:/usr/local/bin", "HOME=" + os.Getenv("HOME")}, m.env()...)
 	cmd.Stdin = bytes.NewReader(tb)
+	killTree(cmd)
 	if err := cmd.Run(); err != nil {
 		return errors.New("could not reach the host or copy the worker (is the VPN up and ssh working for this host?)")
 	}
@@ -428,6 +429,7 @@ func (m *Manager) runShellCap(ctx context.Context, h Host, inner string, stdin [
 	}
 	out := capped{max: maxOut}
 	cmd.Stdout = &out
+	killTree(cmd)
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
 			return nil, errors.New("the host did not answer in time")

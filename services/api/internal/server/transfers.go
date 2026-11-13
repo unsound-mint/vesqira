@@ -844,6 +844,12 @@ func (s *Server) attempt(ctx context.Context, t transfers.Transfer, h hosts.Host
 		return failed("could not record the transfer: %v", err)
 	}
 
+	// an earlier attempt that rsync did not survive (SIGKILL, OOM, power cut) left its hidden temporary file for this name: it
+	// becomes the partial file, so the copy resumes (only files of exactly this name are touched; hosts.AdoptOrphanTemp)
+	if download && src.kind == hosts.KindFile && !skipCopy {
+		_, _ = hosts.AdoptOrphanTemp(destReal, final)
+	}
+
 	// room on this computer, counting what an earlier attempt already holds
 	if download && total > 0 {
 		have := int64(0)

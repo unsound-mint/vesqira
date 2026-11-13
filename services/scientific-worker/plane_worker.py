@@ -380,9 +380,44 @@ class Cube:
             idx.append(ys if f == self.y else xs if f == self.x else (channel if f == self.chan else 0))
         return tuple(idx)
 
+    def _hint_block(self, hdul, arr, c0: int, c1: int, ys: slice, xs: slice) -> None:
+        """Tell the kernel which bytes of the mapped file the next block reads, so a cold cube is read for those bytes and in
+        parallel. Without it each channel's few rows fault one at a time and every fault reads a readahead window of several MB:
+        a 10 x 10 box over 600 channels asked the disk for 2.4 GB (measured, 5 GiB cube on NVMe) and waited on 600 reads in turn.
+        MADV_RANDOM switches that readahead off for this mapping and MADV_WILLNEED queues the exact byte span of each channel.
+        The advice lives on this open's mapping only: every request opens the file itself (block_reader, read_plane), so a plane
+        read after a spectrum has the kernel's normal readahead (bench row plane_after_spectrum).
+        Only hints: values are never affected, and any failure (no mmap object, other platform) leaves the plain read."""
+        try:
+            import mmap as _mmap
+            mm = hdul._file._mmap
+            if not isinstance(arr, np.ndarray) or mm is None:
+                return
+            page = _mmap.PAGESIZE
+            probe = np.frombuffer(mm, dtype=np.uint8, count=1)
+            base = probe.__array_interface__["data"][0]
+            del probe
+            mm.madvise(_mmap.MADV_RANDOM)
+            n = c1 - c0 if self.chan is not None else 1
+            for k in range(n):
+                v = arr[self._index(c0 + k if self.chan is not None else 0, ys, xs)]
+                if not isinstance(v, np.ndarray) or v.size == 0:
+                    continue
+                lo = v.__array_interface__["data"][0]
+                hi = lo + sum((d - 1) * abs(st) for d, st in zip(v.shape, v.strides)) + v.itemsize
+                if lo < base or hi > base + len(mm):
+                    continue
+                start = (lo - base) // page * page
+                mm.madvise(_mmap.MADV_WILLNEED, start, hi - base - start)
+        except (AttributeError, OSError, ValueError, TypeError, BufferError):
+            return
+
     def _channel_block(self, hdul, c0: int, c1: int, ys: slice, xs: slice) -> np.ndarray:
         """Physical values of channels [c0, c1) over a region, as an array (channels, y, x)."""
-        raw = np.array(fits_array(hdul)[self._index(slice(c0, c1), ys, xs)])
+        arr = fits_array(hdul)
+        if os.environ.get("VESQIRA_NO_READ_HINTS") != "1":      # off switch for the equality test and for measurements
+            self._hint_block(hdul, arr, c0, c1, ys, xs)
+        raw = np.array(arr[self._index(slice(c0, c1), ys, xs)])
         if self.chan is None:                                  # a map without a channel axis is one channel
             raw = raw[np.newaxis]
             return self._physical(np.swapaxes(raw, 1, 2) if self.x > self.y else raw)
@@ -947,6 +982,9 @@ def complete_names(req: dict) -> dict:
     return out
 
 
+STAT_MANY_MAX = 192                                  # decomp.MAX_MAP_FILES
+
+
 def host_op(op: str, req: dict) -> tuple[dict, bytes]:
     """Operations used when this worker runs on a remote host (and by the local API for registration)."""
     if op == "ping":
@@ -960,6 +998,16 @@ def host_op(op: str, req: dict) -> tuple[dict, bytes]:
         return walk_page(req), b""
     if op == "canon":
         return canonical_dir(path), b""
+    if op == "stat_many":
+        # the size and time of a few files at once (the map files of a decomposition), each authorized and opened like any source
+        paths = req.get("paths")
+        if not isinstance(paths, list) or not 1 <= len(paths) <= STAT_MANY_MAX:
+            raise Refused("bad_request", "bad request")
+        files = []
+        for p in paths:
+            st = stat_source(authorize(p))
+            files.append({"size": st.st_size, "mtime_ns": st.st_mtime_ns})
+        return {"ok": True, "op": op, "nbytes": 0, "files": files}, b""
     if op == "list":
         real = authorize(path, "dir")
         entries = []
@@ -1298,7 +1346,8 @@ def rohsa_op(op: str, req: dict) -> tuple[dict, bytes]:
         if not isinstance(v, str) or not os.path.isabs(v) or len(v) > 4096 or "\0" in v:
             raise Refused("bad_request", "bad request")
     real_crop, real_dat = authorize(req["path"]), authorize(req["dat_path"], decomp.dat_want(req))
-    cache_dir = req["cache_dir"] if ROOTS is None else remote_cache_dir(real_dat)
+    # only a text table keeps a sidecar index; FITS maps are read in place by pixel, so a host writes nothing for them
+    cache_dir = None if decomp.dat_want(req) == "dir" else req["cache_dir"] if ROOTS is None else remote_cache_dir(real_dat)
     c = cube_for(real_crop)
     if c.chan is None or c.channels < 2:
         raise Refused("unsupported", "the crop has no spectral axis of at least two channels")
@@ -1359,7 +1408,7 @@ def handle(req: dict) -> tuple[dict, bytes]:
     return head, payload
 
 
-WINDOW_OPS = ("view", "plane", "coord", "spectrum")
+WINDOW_OPS = ("view", "plane", "coord", "spectrum", "sky_footprint", "sky_point")
 
 
 def _handle(req: dict) -> tuple[dict, bytes]:
@@ -1391,7 +1440,7 @@ def _handle(req: dict) -> tuple[dict, bytes]:
             raise Refused("bad_request", "channel must be a non-negative integer")
         import masks as mk
         return mk.mask_plane(path, ch)
-    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon", "fingerprint", "fingerprint_full"):
+    if op in ("ping", "list", "resolve", "stat", "header", "describe", "readtext", "complete", "walk", "canon", "fingerprint", "fingerprint_full", "stat_many"):
         return host_op(op, req)
     if isinstance(op, str) and op.startswith("catalog_"):
         return catalog_op(op, path, req)

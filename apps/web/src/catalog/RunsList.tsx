@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { GitBranch } from "lucide-react";
 import type { Run } from "../api/runs";
 import type { Job } from "../api/jobs";
-import { Button, FilterBox, PathField, Select, TreeRow } from "../ui";
+import { Button, FilterBox, PathField, Select, TreeRow, VirtualList } from "../ui";
 import { matchRun } from "./filter";
 import { runVocabulary } from "./vocabulary";
 import { contextIndex } from "./runTable";
@@ -33,6 +33,8 @@ export function RunsList({ runs, hosts = [], jobs = [], query, onQuery, onImport
   const ctxOf = useMemo(() => contextIndex(runs, jobs, (id) => hosts.find((h) => h.id === id)?.name), [runs, jobs, hosts]);
   const shown = useMemo(() => runs.filter((r) => matchRun(r, q, ctxOf(r))), [runs, q, ctxOf]);
   const vocabulary = useMemo(() => runVocabulary(runs, ctxOf), [runs, ctxOf]);
+  const runIds = useMemo(() => shown.map((r) => String(r.id)), [shown]);
+  const runById = useMemo(() => new Map(runs.map((r) => [String(r.id), r])), [runs]);
   const active = runs.filter((r) => !r.archived).length;
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -61,13 +63,10 @@ export function RunsList({ runs, hosts = [], jobs = [], query, onQuery, onImport
       {runs.length > 3 || runs.length > active ? <FilterBox label="Filter runs" placeholder="Filter runs" value={q} onChange={setQ} vocabulary={vocabulary} shown={shown.length} total={active} noun="runs" /> : null}
       {onOpenTable && runs.length > 0 ? <Button variant="ghost" onClick={onOpenTable}>Open as a table with plot…</Button> : null}
       {runs.length > 0 && shown.length === 0 ? <p className={s.note}>No run matches. Remove a filter above to widen the list.</p> : null}
-      <div role="list" aria-label="Runs">
-        {shown.map((r) => (
-          <div role="listitem" key={r.id}>
-            <TreeRow icon={GitBranch} onSelect={() => onOpen(r)} trailing={[r.archived ? "archived" : "", r.reproducibleFromCommit ? "" : "dirty"].filter(Boolean).join(" · ")}>{r.name}</TreeRow>
-          </div>
-        ))}
-      </div>
+      <VirtualList label="Runs" ids={runIds} renderRow={(id, rowProps) => {
+        const r = runById.get(id)!;
+        return <TreeRow icon={GitBranch} rowProps={rowProps} onSelect={() => onOpen(r)} trailing={[r.archived ? "archived" : "", r.reproducibleFromCommit ? "" : "dirty"].filter(Boolean).join(" · ")}>{r.name}</TreeRow>;
+      }} />
     </div>
   );
 }

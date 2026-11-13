@@ -211,6 +211,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analysis/family-maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The comparison and spread maps family runs registered in this workspace, newest first, each with what holds it (ADR 0070) */
+        get: operations["owner_s_listFamilyMaps_get_api_analysis_family_maps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analysis/family-maps/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove family comparison maps that nothing uses (ADR 0070): from the catalog and, for files Vesqira wrote on this computer, from disk. A map a figure, board, report or published review uses, or that something was made from, is kept with the reason. Sources are never touched */
+        post: operations["owner_s_removeFamilyMaps_post_api_analysis_family_maps_remove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/analysis/healpix-sample": {
         parameters: {
             query?: never;
@@ -1982,6 +2016,23 @@ export interface paths {
         put?: never;
         /** Save a cross-run plot as a figure that draws no dataset (owner listener only) */
         post: operations["owner_s_createRunFigure_post_api_figures_runs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/figures/sky": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save the sky panel's view as a figure that draws no dataset of its own (owner listener only) */
+        post: operations["owner_s_createSkyFigure_post_api_figures_sky"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4895,6 +4946,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/subsets/{sid}/sky-footprint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Where the image lies on the sky, in the sky panel's frame
+         * @description From the dataset's celestial WCS with the researcher's corrections in force, by astropy (ADR 0072). A dataset with no usable celestial WCS is a 200 with `footprint` null and the reason. A point catalog or HEALPix map is a 409. Over a subset (ADR 0072): the outline and positions of the subset's window, computed by the worker from the source's WCS with the crop and step applied (pixels are the subset's own). 409 with code subset_stale when the source file changed since the version was pinned; 404 when the subset or its source is gone.
+         */
+        get: operations["owner_s_skyFootprint_get_api_subsets_sid_sky_footprint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/subsets/{sid}/sky-point": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Where one pixel is on the sky, in the sky panel's frame
+         * @description The viewer's cursor for the sky panel (ADR 0072): world coordinates by astropy, never pixels. A dataset with no usable celestial WCS is a 200 with `position` null and the reason. Over a subset (ADR 0072): the outline and positions of the subset's window, computed by the worker from the source's WCS with the crop and step applied (pixels are the subset's own). 409 with code subset_stale when the source file changed since the version was pinned; 404 when the subset or its source is gone.
+         */
+        get: operations["owner_s_skyPoint_get_api_subsets_sid_sky_point"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/subsets/{sid}/spectrum": {
         parameters: {
             query?: never;
@@ -5061,6 +5156,25 @@ export interface paths {
         put?: never;
         /** Stop scheduling; drafts not yet submitted stay drafts */
         post: operations["owner_s_cancelSweep_post_api_sweeps_id_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sweeps/{id}/family": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** A sweep's finished jobs as a family of maps (ADR 0070): the outputs of one run role, labelled by the parameters that differ, with the jobs that cannot be compared listed and the reason */
+        get: operations["owner_s_sweepFamily_get_api_sweeps_id_family"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6113,10 +6227,10 @@ export interface components {
             cy?: number;
             r?: number;
         };
-        /** @description What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. runplot is the kind of a cross-run plot (ADR 0065) and is never accepted on a request. */
+        /** @description What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. runplot is the kind of a cross-run plot (ADR 0065) and is never accepted on a request. sky is the kind of a sky view (ADR 0072) and is never accepted on a request. */
         FigureView: {
             /** @enum {string} */
-            kind: "plane" | "spectrum" | "orientation" | "channelgrid" | "runplot";
+            kind: "plane" | "spectrum" | "orientation" | "channelgrid" | "runplot" | "sky";
             channel?: number;
             spectralValue?: number;
             /** @description At most 16 characters of letters, digits and / * ^ . - space */
@@ -6230,7 +6344,7 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
-        /** @description Reviewer-safe account of where a figure came from. It has no path and no dataset id. For a cross-run plot (ADR 0065) source says there is no file, view.kind is runplot and runPlot gives the words and counts. */
+        /** @description Reviewer-safe account of where a figure came from. It has no path and no dataset id. For a cross-run plot (ADR 0065) source says there is no file, view.kind is runplot and runPlot gives the words and counts. For a sky view (ADR 0072) source says there is no file, view.kind is sky and sky gives the frame, the field, the survey background (context only) and each footprint by file name and WCS basis; it has no dataset id. */
         FigureProvenance: {
             /** @description The source file by name only; no path and no dataset id. */
             source: {
@@ -6258,8 +6372,9 @@ export interface components {
             /** @description Present when the figure was drawn under corrections (ADR 0061) */
             corrections?: components["schemas"]["FigureCorrection"][];
             runPlot?: components["schemas"]["FigureRunPlot"];
+            sky?: components["schemas"]["FigureSkyView"];
         };
-        /** @description Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. A figure of a dataset has datasetId and kind "dataset"; a cross-run plot (ADR 0065) has no dataset (datasetId null) and kind "crossrun". */
+        /** @description Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. A figure of a dataset has datasetId and kind "dataset"; a cross-run plot (ADR 0065) has no dataset (datasetId null) and kind "crossrun". A sky view (ADR 0072) also has no dataset (datasetId null) and kind "sky". */
         Figure: {
             /** Format: int64 */
             id: number;
@@ -6284,7 +6399,7 @@ export interface components {
             /** @description Absent for figures saved before identities (ADR 0053). */
             identity?: components["schemas"]["FigureIdentity"];
             /** @enum {string} */
-            kind: "dataset" | "crossrun";
+            kind: "dataset" | "crossrun" | "sky";
             /** @description The access label the figure carries, from its source datasets at the time of the reply; absent when released. Owner API only (it names datasets). */
             access?: components["schemas"]["AccessEffective"];
         };
@@ -11823,7 +11938,7 @@ export interface components {
             not_fitted?: number;
         };
         FamilyRequest: {
-            /** @description The maps to compare: all scalar maps or all declared axial orientation maps, on this computer, sharing one grid */
+            /** @description The maps to compare: all scalar maps or all declared axial orientation maps, all on this computer or all on one host (then the host's copy of the program compares them there and writes the results in its derived folder), sharing one grid */
             datasetIds: number[];
             /**
              * Format: int64
@@ -12269,6 +12384,134 @@ export interface components {
                 pinProfileCommit?: boolean;
             };
         };
+        /** @description The survey image behind a sky view. It is context: not data from the author's files and never sampled into a number. The server fills these words from its fixed list. */
+        FigureSkyBackground: {
+            hipsId: string;
+            name: string;
+            provider: string;
+            credit: string;
+            /** @enum {string} */
+            role: "context";
+        };
+        /** @description One outline drawn on a sky view: the file's name, whether it is a window onto the file (a virtual subset), and how the file's celestial frame is known. */
+        FigureSkyFootprint: {
+            name: string;
+            window: boolean;
+            basis: string;
+        };
+        /** @description Reviewer-safe account of a sky view: the frame, the centre, the field, the survey background or null, and the footprints. It has no dataset id. */
+        FigureSkyView: {
+            /** @enum {string} */
+            frame: "icrs" | "galactic";
+            centre: {
+                lon: number;
+                lat: number;
+            };
+            fovDeg: number;
+            background: components["schemas"]["FigureSkyBackground"] | null;
+            footprints: components["schemas"]["FigureSkyFootprint"][];
+        };
+        /** @description Saves the sky panel's view as a figure (ADR 0072). The server reads every footprint itself, through the same routes the panel uses, and writes the survey's name, provider and credit from its fixed list; the browser says which datasets or subsets, the frame, the centre, the field and whether a survey was in the picture. The server never contacts the survey host. */
+        CreateSkyFigureRequest: {
+            title: string;
+            caption?: string;
+            /** @description base64 PNG */
+            previewPng: string;
+            /** @enum {string} */
+            frame: "icrs" | "galactic";
+            centre: {
+                lon: number;
+                lat: number;
+            };
+            fovDeg: number;
+            /** @description The HiPS id of the background in the picture; absent or null for the plain grid. */
+            survey?: string | null;
+            footprints: {
+                /** @enum {string} */
+                kind: "dataset" | "subset";
+                /** Format: int64 */
+                id: number;
+            }[];
+        };
+        /** @description A sweep's finished jobs as a family: one map per job (the run's single output of the chosen role), labelled by the parameters that differ, and the jobs left out with the reason */
+        SweepFamily: {
+            /** Format: int64 */
+            sweepId: number;
+            name: string;
+            /** @description The run output role compared; empty when the jobs have several kinds of output and none was chosen */
+            role: string;
+            roles: {
+                role: string;
+                /** @description How many jobs have a registered output of this role */
+                jobs: number;
+            }[];
+            /** @description In the sweep's order; the first is the suggested reference */
+            members: {
+                /** Format: int64 */
+                jobId: number;
+                /** @description The parameter values that differ across the sweep, e.g. kernel = 3 */
+                label: string;
+                /** Format: int64 */
+                datasetId: number;
+                name: string;
+            }[];
+            /** @description Jobs not compared, each with the reason (no result yet, no output of the role, another grid, another brightness unit, an orientation map nobody declared, ...) */
+            excluded: {
+                /** Format: int64 */
+                jobId: number;
+                label: string;
+                reason: string;
+            }[];
+            /**
+             * Format: int64
+             * @description 0 when there is no member
+             */
+            referenceId: number;
+            note: string;
+        };
+        /** @description A comparison or spread map a family run registered, and what holds it */
+        FamilyMapView: {
+            /** Format: int64 */
+            datasetId: number;
+            name: string;
+            /** @enum {string} */
+            role: "spread" | "difference";
+            /** @description The member compared with the reference, -1 for the spread map */
+            member: number;
+            /** @description The maps of one comparison share it */
+            run: string;
+            /** Format: int64 */
+            referenceId: number;
+            /**
+             * Format: int64
+             * @description 0 for a file on this computer
+             */
+            hostId: number;
+            /** Format: int64 */
+            sizeBytes: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description What keeps the map (a figure, board, report or published review that uses it, something made from it, or something you declared on it); empty when it can be removed */
+            holds: string[];
+        };
+        FamilyMapRemoval: {
+            /** Format: int64 */
+            datasetId: number;
+            name: string;
+            removed: boolean;
+            /** @description Why a map was kept */
+            reason?: string;
+            /**
+             * @description removed: the file Vesqira wrote on this computer was deleted; kept: a file on a host is left there (Vesqira deletes nothing on a host); failed: the file could not be deleted
+             * @enum {string}
+             */
+            bytes: "none" | "removed" | "kept" | "failed";
+        };
+        FamilyMapsRemoved: {
+            results: components["schemas"]["FamilyMapRemoval"][];
+            /** @description Present when nothing was removed: the first reason */
+            error?: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -12654,7 +12897,7 @@ export interface operations {
                     "application/json": components["schemas"]["FamilyResult"];
                 };
             };
-            /** @description the maps are not known to share a grid (reasons listed; nothing is resampled), a map lives on another host, or an orientation declaration is stale */
+            /** @description the maps are not known to share a grid (reasons listed; nothing is resampled), the maps are not all in one place (here, or one host), or an orientation declaration is stale */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -12664,6 +12907,90 @@ export interface operations {
                 };
             };
             /** @description fewer than 2 or more than 12 maps, mixed kinds, orientations stated in different frames, different brightness units, or the worker refused */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_listFamilyMaps_get_api_analysis_family_maps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the maps, possibly none */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        maps: components["schemas"]["FamilyMapView"][];
+                    };
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_removeFamilyMaps_post_api_analysis_family_maps_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    datasetIds: number[];
+                };
+            };
+        };
+        responses: {
+            /** @description one result per map; some may have been kept */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilyMapsRemoved"];
+                };
+            };
+            /** @description nothing was removed: every chosen map is held or not a family map */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FamilyMapsRemoved"];
+                };
+            };
+            /** @description no maps or more than 500 */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -15499,7 +15826,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only) */
+            /** @description the dataset is not on the run's grid or the run has no crop; for a fit on a host, also the host's worker is too old to have the review (deploy the current one to it) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -15677,7 +16004,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only) */
+            /** @description the dataset is not on the run's grid or the run has no crop; for a fit on a host, also the host's worker is too old to have the review (deploy the current one to it) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -15766,7 +16093,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only) */
+            /** @description the dataset is not on the run's grid or the run has no crop; for a fit on a host, also the host's worker is too old to have the review (deploy the current one to it) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -16191,6 +16518,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CreateRunFigureRequest"];
+            };
+        };
+        responses: {
+            /** @description created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Figure"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_createSkyFigure_post_api_figures_sky: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSkyFigureRequest"];
             };
         };
         responses: {
@@ -21489,6 +21849,78 @@ export interface operations {
             };
         };
     };
+    owner_s_skyFootprint_get_api_subsets_sid_sky_footprint: {
+        parameters: {
+            query: {
+                /** @description The sky panel's frame: the positions come back in it. */
+                frame: "icrs" | "galactic";
+            };
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkyFootprint"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_skyPoint_get_api_subsets_sid_sky_point: {
+        parameters: {
+            query: {
+                /** @description The sky panel's frame: the positions come back in it. */
+                frame: "icrs" | "galactic";
+                /** @description 0-based image pixel, as the coordinate readout uses. */
+                x: number;
+                /** @description 0-based image pixel, as the coordinate readout uses. */
+                y: number;
+            };
+            header?: never;
+            path: {
+                sid: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkyPoint"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     owner_s_spectrum_get_api_subsets_sid_spectrum: {
         parameters: {
             query: {
@@ -21826,6 +22258,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Sweep"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_sweepFamily_get_api_sweeps_id_family: {
+        parameters: {
+            query?: {
+                /** @description The run output role to compare (orientation, support, ...). Left out: the only role the jobs have, else the roles are listed and none is chosen */
+                role?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SweepFamily"];
+                };
+            };
+            /** @description no job of the sweep has an output with that role */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Error */

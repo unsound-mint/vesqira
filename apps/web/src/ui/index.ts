@@ -18,5 +18,6 @@ export { Pill } from "./Pill";
 export { ResizeHandle } from "./ResizeHandle";
 export { Section } from "./Section";
 export { useRoving } from "./roving";
+export { VirtualList } from "./VirtualList";
 export { ScrollTable } from "./ScrollTable";
 export { TreeRow } from "./TreeRow";

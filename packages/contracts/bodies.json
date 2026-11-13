@@ -1137,7 +1137,7 @@
   },
   "FigureView": {
    "type": "object",
-   "description": "What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. runplot is the kind of a cross-run plot (ADR 0065) and is never accepted on a request.",
+   "description": "What a figure shows. Unknown keys are refused, so nothing else can ride along into a reviewer's view. runplot is the kind of a cross-run plot (ADR 0065) and is never accepted on a request. sky is the kind of a sky view (ADR 0072) and is never accepted on a request.",
    "required": [
     "kind"
    ],
@@ -1149,7 +1149,8 @@
       "spectrum",
       "orientation",
       "channelgrid",
-      "runplot"
+      "runplot",
+      "sky"
      ]
     },
     "channel": {
@@ -1530,7 +1531,7 @@
   },
   "FigureProvenance": {
    "type": "object",
-   "description": "Reviewer-safe account of where a figure came from. It has no path and no dataset id. For a cross-run plot (ADR 0065) source says there is no file, view.kind is runplot and runPlot gives the words and counts.",
+   "description": "Reviewer-safe account of where a figure came from. It has no path and no dataset id. For a cross-run plot (ADR 0065) source says there is no file, view.kind is runplot and runPlot gives the words and counts. For a sky view (ADR 0072) source says there is no file, view.kind is sky and sky gives the frame, the field, the survey background (context only) and each footprint by file name and WCS basis; it has no dataset id.",
    "required": [
     "source",
     "view",
@@ -1613,12 +1614,15 @@
     },
     "runPlot": {
      "$ref": "#/components/schemas/FigureRunPlot"
+    },
+    "sky": {
+     "$ref": "#/components/schemas/FigureSkyView"
     }
    }
   },
   "Figure": {
    "type": "object",
-   "description": "Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. A figure of a dataset has datasetId and kind \"dataset\"; a cross-run plot (ADR 0065) has no dataset (datasetId null) and kind \"crossrun\".",
+   "description": "Pinned evidence: the picture and the facts it was made from do not change. Title and caption are working text and may be edited. A figure of a dataset has datasetId and kind \"dataset\"; a cross-run plot (ADR 0065) has no dataset (datasetId null) and kind \"crossrun\". A sky view (ADR 0072) also has no dataset (datasetId null) and kind \"sky\".",
    "required": [
     "id",
     "datasetId",
@@ -1698,7 +1702,8 @@
      "type": "string",
      "enum": [
       "dataset",
-      "crossrun"
+      "crossrun",
+      "sky"
      ]
     },
     "access": {
@@ -19554,7 +19559,7 @@
       "type": "integer",
       "format": "int64"
      },
-     "description": "The maps to compare: all scalar maps or all declared axial orientation maps, on this computer, sharing one grid"
+     "description": "The maps to compare: all scalar maps or all declared axial orientation maps, all on this computer or all on one host (then the host's copy of the program compares them there and writes the results in its derived folder), sharing one grid"
     },
     "referenceId": {
      "type": "integer",
@@ -20888,6 +20893,415 @@
        "description": "Stop the job unless the tool's folder is at the commit the profile was written against (off unless asked)"
       }
      }
+    }
+   }
+  },
+  "FigureSkyBackground": {
+   "type": "object",
+   "required": [
+    "hipsId",
+    "name",
+    "provider",
+    "credit",
+    "role"
+   ],
+   "description": "The survey image behind a sky view. It is context: not data from the author's files and never sampled into a number. The server fills these words from its fixed list.",
+   "properties": {
+    "hipsId": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "provider": {
+     "type": "string"
+    },
+    "credit": {
+     "type": "string"
+    },
+    "role": {
+     "type": "string",
+     "enum": [
+      "context"
+     ]
+    }
+   }
+  },
+  "FigureSkyFootprint": {
+   "type": "object",
+   "required": [
+    "name",
+    "window",
+    "basis"
+   ],
+   "description": "One outline drawn on a sky view: the file's name, whether it is a window onto the file (a virtual subset), and how the file's celestial frame is known.",
+   "properties": {
+    "name": {
+     "type": "string"
+    },
+    "window": {
+     "type": "boolean"
+    },
+    "basis": {
+     "type": "string"
+    }
+   }
+  },
+  "FigureSkyView": {
+   "type": "object",
+   "required": [
+    "frame",
+    "centre",
+    "fovDeg",
+    "background",
+    "footprints"
+   ],
+   "description": "Reviewer-safe account of a sky view: the frame, the centre, the field, the survey background or null, and the footprints. It has no dataset id.",
+   "properties": {
+    "frame": {
+     "type": "string",
+     "enum": [
+      "icrs",
+      "galactic"
+     ]
+    },
+    "centre": {
+     "type": "object",
+     "required": [
+      "lon",
+      "lat"
+     ],
+     "properties": {
+      "lon": {
+       "type": "number"
+      },
+      "lat": {
+       "type": "number"
+      }
+     }
+    },
+    "fovDeg": {
+     "type": "number"
+    },
+    "background": {
+     "allOf": [
+      {
+       "$ref": "#/components/schemas/FigureSkyBackground"
+      }
+     ],
+     "nullable": true
+    },
+    "footprints": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/FigureSkyFootprint"
+     }
+    }
+   }
+  },
+  "CreateSkyFigureRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "title",
+    "previewPng",
+    "frame",
+    "centre",
+    "fovDeg",
+    "footprints"
+   ],
+   "description": "Saves the sky panel's view as a figure (ADR 0072). The server reads every footprint itself, through the same routes the panel uses, and writes the survey's name, provider and credit from its fixed list; the browser says which datasets or subsets, the frame, the centre, the field and whether a survey was in the picture. The server never contacts the survey host.",
+   "properties": {
+    "title": {
+     "type": "string"
+    },
+    "caption": {
+     "type": "string"
+    },
+    "previewPng": {
+     "type": "string",
+     "description": "base64 PNG"
+    },
+    "frame": {
+     "type": "string",
+     "enum": [
+      "icrs",
+      "galactic"
+     ]
+    },
+    "centre": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "lon",
+      "lat"
+     ],
+     "properties": {
+      "lon": {
+       "type": "number"
+      },
+      "lat": {
+       "type": "number"
+      }
+     }
+    },
+    "fovDeg": {
+     "type": "number"
+    },
+    "survey": {
+     "type": "string",
+     "nullable": true,
+     "description": "The HiPS id of the background in the picture; absent or null for the plain grid."
+    },
+    "footprints": {
+     "type": "array",
+     "maxItems": 120,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "kind",
+       "id"
+      ],
+      "properties": {
+       "kind": {
+        "type": "string",
+        "enum": [
+         "dataset",
+         "subset"
+        ]
+       },
+       "id": {
+        "type": "integer",
+        "format": "int64"
+       }
+      }
+     }
+    }
+   }
+  },
+  "SweepFamily": {
+   "type": "object",
+   "description": "A sweep's finished jobs as a family: one map per job (the run's single output of the chosen role), labelled by the parameters that differ, and the jobs left out with the reason",
+   "required": [
+    "sweepId",
+    "name",
+    "role",
+    "roles",
+    "members",
+    "excluded",
+    "referenceId",
+    "note"
+   ],
+   "properties": {
+    "sweepId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    },
+    "role": {
+     "type": "string",
+     "description": "The run output role compared; empty when the jobs have several kinds of output and none was chosen"
+    },
+    "roles": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "role",
+       "jobs"
+      ],
+      "properties": {
+       "role": {
+        "type": "string"
+       },
+       "jobs": {
+        "type": "integer",
+        "description": "How many jobs have a registered output of this role"
+       }
+      }
+     }
+    },
+    "members": {
+     "type": "array",
+     "description": "In the sweep's order; the first is the suggested reference",
+     "items": {
+      "type": "object",
+      "required": [
+       "jobId",
+       "label",
+       "datasetId",
+       "name"
+      ],
+      "properties": {
+       "jobId": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "label": {
+        "type": "string",
+        "description": "The parameter values that differ across the sweep, e.g. kernel = 3"
+       },
+       "datasetId": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "name": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "excluded": {
+     "type": "array",
+     "description": "Jobs not compared, each with the reason (no result yet, no output of the role, another grid, another brightness unit, an orientation map nobody declared, ...)",
+     "items": {
+      "type": "object",
+      "required": [
+       "jobId",
+       "label",
+       "reason"
+      ],
+      "properties": {
+       "jobId": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "label": {
+        "type": "string"
+       },
+       "reason": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    "referenceId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "0 when there is no member"
+    },
+    "note": {
+     "type": "string"
+    }
+   }
+  },
+  "FamilyMapView": {
+   "type": "object",
+   "description": "A comparison or spread map a family run registered, and what holds it",
+   "required": [
+    "datasetId",
+    "name",
+    "role",
+    "member",
+    "run",
+    "referenceId",
+    "hostId",
+    "sizeBytes",
+    "createdAt",
+    "holds"
+   ],
+   "properties": {
+    "datasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    },
+    "role": {
+     "type": "string",
+     "enum": [
+      "spread",
+      "difference"
+     ]
+    },
+    "member": {
+     "type": "integer",
+     "description": "The member compared with the reference, -1 for the spread map"
+    },
+    "run": {
+     "type": "string",
+     "description": "The maps of one comparison share it"
+    },
+    "referenceId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "hostId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "0 for a file on this computer"
+    },
+    "sizeBytes": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "createdAt": {
+     "type": "string",
+     "format": "date-time"
+    },
+    "holds": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "What keeps the map (a figure, board, report or published review that uses it, something made from it, or something you declared on it); empty when it can be removed"
+    }
+   }
+  },
+  "FamilyMapRemoval": {
+   "type": "object",
+   "required": [
+    "datasetId",
+    "name",
+    "removed",
+    "bytes"
+   ],
+   "properties": {
+    "datasetId": {
+     "type": "integer",
+     "format": "int64"
+    },
+    "name": {
+     "type": "string"
+    },
+    "removed": {
+     "type": "boolean"
+    },
+    "reason": {
+     "type": "string",
+     "description": "Why a map was kept"
+    },
+    "bytes": {
+     "type": "string",
+     "enum": [
+      "none",
+      "removed",
+      "kept",
+      "failed"
+     ],
+     "description": "removed: the file Vesqira wrote on this computer was deleted; kept: a file on a host is left there (Vesqira deletes nothing on a host); failed: the file could not be deleted"
+    }
+   }
+  },
+  "FamilyMapsRemoved": {
+   "type": "object",
+   "required": [
+    "results"
+   ],
+   "properties": {
+    "results": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/FamilyMapRemoval"
+     }
+    },
+    "error": {
+     "type": "string",
+     "description": "Present when nothing was removed: the first reason"
     }
    }
   }
@@ -28146,6 +28560,41 @@
     }
    }
   },
+  "POST /api/figures/sky": {
+   "summary": "Save the sky panel's view as a figure that draws no dataset of its own (owner listener only)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/CreateSkyFigureRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "created",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Figure"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
   "GET /api/auth/state": {
    "summary": "Where this browser is in signing in (group server)",
    "responses": {
@@ -30626,7 +31075,7 @@
      }
     },
     "409": {
-     "description": "the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only)",
+     "description": "the dataset is not on the run's grid or the run has no crop; for a fit on a host, also the host's worker is too old to have the review (deploy the current one to it)",
      "content": {
       "application/json": {
        "schema": {
@@ -30732,7 +31181,7 @@
      }
     },
     "409": {
-     "description": "the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only)",
+     "description": "the dataset is not on the run's grid or the run has no crop; for a fit on a host, also the host's worker is too old to have the review (deploy the current one to it)",
      "content": {
       "application/json": {
        "schema": {
@@ -30838,7 +31287,7 @@
      }
     },
     "409": {
-     "description": "the dataset is not on the run's grid, the run has no crop, or the fit lives on a host (the review runs on this computer only)",
+     "description": "the dataset is not on the run's grid or the run has no crop; for a fit on a host, also the host's worker is too old to have the review (deploy the current one to it)",
      "content": {
       "application/json": {
        "schema": {
@@ -30913,7 +31362,7 @@
      }
     },
     "409": {
-     "description": "the maps are not known to share a grid (reasons listed; nothing is resampled), a map lives on another host, or an orientation declaration is stale",
+     "description": "the maps are not known to share a grid (reasons listed; nothing is resampled), the maps are not all in one place (here, or one host), or an orientation declaration is stale",
      "content": {
       "application/json": {
        "schema": {
@@ -31194,12 +31643,132 @@
     }
    }
   },
+  "GET /api/subsets/{sid}/sky-footprint": {
+   "summary": "Where the image lies on the sky, in the sky panel's frame",
+   "description": "From the dataset's celestial WCS with the researcher's corrections in force, by astropy (ADR 0072). A dataset with no usable celestial WCS is a 200 with `footprint` null and the reason. A point catalog or HEALPix map is a 409. Over a subset (ADR 0072): the outline and positions of the subset's window, computed by the worker from the source's WCS with the crop and step applied (pixels are the subset's own). 409 with code subset_stale when the source file changed since the version was pinned; 404 when the subset or its source is gone.",
+   "parameters": [
+    {
+     "name": "sid",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "frame",
+     "in": "query",
+     "required": true,
+     "description": "The sky panel's frame: the positions come back in it.",
+     "schema": {
+      "type": "string",
+      "enum": [
+       "icrs",
+       "galactic"
+      ]
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SkyFootprint"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
   "GET /api/datasets/{id}/sky-point": {
    "summary": "Where one pixel is on the sky, in the sky panel's frame",
    "description": "The viewer's cursor for the sky panel (ADR 0072): world coordinates by astropy, never pixels. A dataset with no usable celestial WCS is a 200 with `position` null and the reason.",
    "parameters": [
     {
      "name": "id",
+     "in": "path",
+     "required": true,
+     "schema": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    {
+     "name": "frame",
+     "in": "query",
+     "required": true,
+     "description": "The sky panel's frame: the positions come back in it.",
+     "schema": {
+      "type": "string",
+      "enum": [
+       "icrs",
+       "galactic"
+      ]
+     }
+    },
+    {
+     "name": "x",
+     "in": "query",
+     "required": true,
+     "description": "0-based image pixel, as the coordinate readout uses.",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    {
+     "name": "y",
+     "in": "query",
+     "required": true,
+     "description": "0-based image pixel, as the coordinate readout uses.",
+     "schema": {
+      "type": "integer",
+      "minimum": 0
+     }
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SkyPoint"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/subsets/{sid}/sky-point": {
+   "summary": "Where one pixel is on the sky, in the sky panel's frame",
+   "description": "The viewer's cursor for the sky panel (ADR 0072): world coordinates by astropy, never pixels. A dataset with no usable celestial WCS is a 200 with `position` null and the reason. Over a subset (ADR 0072): the outline and positions of the subset's window, computed by the worker from the source's WCS with the crop and step applied (pixels are the subset's own). 409 with code subset_stale when the source file changed since the version was pinned; 404 when the subset or its source is gone.",
+   "parameters": [
+    {
+     "name": "sid",
      "in": "path",
      "required": true,
      "schema": {
@@ -31436,6 +32005,158 @@
       "application/json": {
        "schema": {
         "type": "object"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/sweeps/{id}/family": {
+   "summary": "A sweep's finished jobs as a family of maps (ADR 0070): the outputs of one run role, labelled by the parameters that differ, with the jobs that cannot be compared listed and the reason",
+   "parameters": [
+    {
+     "name": "role",
+     "in": "query",
+     "required": false,
+     "schema": {
+      "type": "string"
+     },
+     "description": "The run output role to compare (orientation, support, ...). Left out: the only role the jobs have, else the roles are listed and none is chosen"
+    }
+   ],
+   "responses": {
+    "200": {
+     "description": "ok",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SweepFamily"
+       }
+      }
+     }
+    },
+    "422": {
+     "description": "no job of the sweep has an output with that role",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/analysis/family-maps": {
+   "summary": "The comparison and spread maps family runs registered in this workspace, newest first, each with what holds it (ADR 0070)",
+   "responses": {
+    "200": {
+     "description": "the maps, possibly none",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "maps"
+        ],
+        "properties": {
+         "maps": {
+          "type": "array",
+          "items": {
+           "$ref": "#/components/schemas/FamilyMapView"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/analysis/family-maps/remove": {
+   "summary": "Remove family comparison maps that nothing uses (ADR 0070): from the catalog and, for files Vesqira wrote on this computer, from disk. A map a figure, board, report or published review uses, or that something was made from, is kept with the reason. Sources are never touched",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "datasetIds"
+       ],
+       "properties": {
+        "datasetIds": {
+         "type": "array",
+         "minItems": 1,
+         "maxItems": 500,
+         "items": {
+          "type": "integer",
+          "format": "int64"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "responses": {
+    "200": {
+     "description": "one result per map; some may have been kept",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FamilyMapsRemoved"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "nothing was removed: every chosen map is held or not a family map",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FamilyMapsRemoved"
+       }
+      }
+     }
+    },
+    "422": {
+     "description": "no maps or more than 500",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
        }
       }
      }

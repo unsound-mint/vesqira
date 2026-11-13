@@ -1,7 +1,7 @@
 # `make setup` creates .venv; recipes use it when present, so python3 below has numpy and astropy without activating anything
 export PATH := $(CURDIR)/.venv/bin:$(PATH)
 
-.PHONY: setup check docs web fixtures api e2e e2e-isolateddemo bench viewer-bench desktop srpm
+.PHONY: setup check docs web fixtures api e2e e2e-isolateddemo bench bench-disk viewer-bench desktop srpm
 # Check tools, create .venv, install web, e2e and Playwright dependencies (tools/setup.sh); safe to repeat
 setup:
 	tools/setup.sh
@@ -46,6 +46,12 @@ demo:
 # Worker timings on a large sparse cube against tools/bench_budgets.json (page-cache speed, not a disk)
 bench:
 	python3 tools/bench.py --check
+
+# The same reads on a dense cube of 5 GiB on a real file system (pages evicted first: cold, then warm) and through a real ssh to
+# a user-mode sshd on loopback; needs sshd and ssh-keygen, no root. Prints the numbers; no budget (docs/performance.md)
+bench-disk:
+	mkdir -p $(HOME)/.cache/vesqira-bench
+	python3 tools/bench.py --real-disk $(HOME)/.cache/vesqira-bench --ssh
 
 # Build and open the desktop window from this tree, no RPM (see docs/desktop-dev.md)
 desktop:

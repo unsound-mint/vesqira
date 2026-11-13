@@ -192,7 +192,10 @@ type Provenance struct {
 	Nature      string           `json:"nature,omitempty"` // observed | simulated | constructed_control, as declared by the author
 	Run         *runs.Summary    `json:"run,omitempty"`
 	// RunPlot is set for a cross-run plot (ADR 0065): the query, the axes, how many runs and the conversion, never a run.
-	RunPlot    *safeRunPlot     `json:"runPlot,omitempty"`
+	RunPlot *safeRunPlot `json:"runPlot,omitempty"`
+	// Sky is set for a sky view (ADR 0072): the frame, the field, the survey background (context only) and each footprint by file name
+	// and WCS basis, never an id.
+	Sky        *safeSkyView     `json:"sky,omitempty"`
 	Derived    *derived.Summary `json:"derived,omitempty"`
 	View       ViewParams       `json:"view"`
 	Statements []string         `json:"statements"`

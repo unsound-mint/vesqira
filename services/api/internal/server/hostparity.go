@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path"
 	"path/filepath"
 	"slices"
+	"time"
 
 	"github.com/unsound-mint/vesqira/services/api/internal/hosts"
 	"github.com/unsound-mint/vesqira/services/api/internal/worker"
@@ -24,54 +26,12 @@ import (
 // carry is the masks a subset carries (planCarry): their files are written on the host with the result, all or none, and the plan's paths
 // are replaced by the resolved paths the host reports, so recordCarried registers them as masks of that host. Nil for none.
 func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name string, argv []string, carry *carryPlan) (analysisOutcome, string, int, string) {
-	if s.Remote == nil {
-		return analysisOutcome{}, "", 503, "remote hosts are not configured"
-	}
-	if s.Load != nil { // the same heavy slot as a run here: the API waits for the host, and the person sees why
-		_, release, err := s.Load.Acquire(ctx, worker.Heavy, analysisLabel(op))
-		if err != nil {
-			return analysisOutcome{}, "", 499, "request cancelled"
-		}
-		defer release()
-	}
-	corrOpt, corrHashes, corrSnap := s.corrArgs(wsCtx(ctx), h.ID, argv)
-	if corrOpt != "" {
-		argv = append(argv, corrOpt)
-	}
-	timeout := s.Analysis.Timeout
-	out, err := s.Remote.HostRun(ctx, h, op, name, argv, carry.hostOutputs(), timeout)
-	switch {
-	case ctx.Err() != nil:
-		return analysisOutcome{}, "", 499, "request cancelled"
-	case errors.Is(err, hosts.ErrHostRunTimeout):
-		return analysisOutcome{}, "", 504, "this took longer on the host than an interactive request may (" + timeout.String() + "), so Vesqira stopped waiting and recorded nothing (the program on the host stops before it puts a file in place once nobody is listening); make it from a smaller window of the file (a virtual subset written as a file), or run the work as a job on the host"
-	case errors.Is(err, hosts.ErrInvalid):
-		return analysisOutcome{}, "", 409, err.Error()
-	case errors.Is(err, hosts.ErrHostRunFailed):
-		return analysisOutcome{}, "", 502, err.Error()
-	case err != nil:
-		s.reach.set(h.ID, false)
-		return analysisOutcome{}, "", 502, msgHostUnreachable
-	}
-	s.reach.set(h.ID, true)
-	var res struct {
-		OK       bool            `json:"ok"`
-		Error    string          `json:"error"`
-		Summary  json.RawMessage `json:"summary"`
-		Software json.RawMessage `json:"software"`
-		Applied  []string        `json:"corrections_applied"`
-		File     string          `json:"file"`
-		Carried  []string        `json:"carried_files"`
-		Missing  string          `json:"missing_file"`
-	}
-	if json.Unmarshal(out, &res) != nil {
-		return analysisOutcome{}, "", 502, "the host answered unexpectedly"
-	}
-	if !res.OK {
-		if res.Error != "" {
-			return analysisOutcome{}, "", 422, res.Error
-		}
-		return analysisOutcome{}, "", 422, "the program could not be run on this file on the host"
+	slow := "this took longer on the host than an interactive request may (%s), so Vesqira stopped waiting and recorded nothing (the program on the host stops before it puts a file in place once nobody is listening); make it from a smaller window of the file (a virtual subset written as a file), or run the work as a job on the host"
+	res, out, code, msg := s.hostCall(ctx, h, op, argv, slow, func(argv []string, timeout time.Duration) ([]byte, error) {
+		return s.Remote.HostRun(ctx, h, op, name, argv, carry.hostOutputs(), timeout)
+	})
+	if code != 0 {
+		return analysisOutcome{}, "", code, msg
 	}
 	// the host resolves the derived folder (a root reached through a link resolves elsewhere), so the reply names the resolved file; it
 	// must be the name asked for, and the host's worker will refuse it later if it is not inside the roots
@@ -81,12 +41,75 @@ func (s *Server) hostRunAnalysis(ctx context.Context, h hosts.Host, op, name str
 	if !carry.adoptHostFiles(res.Carried, res.Missing, path.Dir(res.File)) {
 		return analysisOutcome{}, "", 502, "the host answered unexpectedly about the masks it was asked to carry; no result was recorded"
 	}
+	return out, res.File, 0, ""
+}
+
+// hostReply is what hostrun.py answers: the analysis program's own reply, with the files it placed.
+type hostReply struct {
+	OK       bool            `json:"ok"`
+	Error    string          `json:"error"`
+	Summary  json.RawMessage `json:"summary"`
+	Software json.RawMessage `json:"software"`
+	Applied  []string        `json:"corrections_applied"`
+	File     string          `json:"file"`
+	Carried  []string        `json:"carried_files"`
+	Missing  string          `json:"missing_file"`
+	Extra    []string        `json:"extra_files"` // files placed besides the result, in the program's order
+}
+
+// hostCall is the part every run on a host shares (a mask, a subset, a decomposition review): the heavy workload slot (the API waits for the
+// host, and the person sees why), the corrections in force for the inputs sent with it and their echo required, the time budget a local
+// analysis has, and the mapping of what can go wrong to a status and a sentence: 499 the person left, 504 the budget ran out, 409 a refusal
+// of the host's worker, 502 a host that did not answer (silent, unreachable, a missing module), 422 the program's own sentence. slow is the
+// 504 sentence with the budget as %s. call runs the program with the final options and the budget.
+func (s *Server) hostCall(ctx context.Context, h hosts.Host, op string, argv []string, slow string, call func(argv []string, timeout time.Duration) ([]byte, error)) (hostReply, analysisOutcome, int, string) {
+	var none hostReply
+	if s.Remote == nil {
+		return none, analysisOutcome{}, 503, "remote hosts are not configured"
+	}
+	if s.Load != nil {
+		_, release, err := s.Load.Acquire(ctx, worker.Heavy, analysisLabel(op))
+		if err != nil {
+			return none, analysisOutcome{}, 499, "request cancelled"
+		}
+		defer release()
+	}
+	corrOpt, corrHashes, corrSnap := s.corrArgs(wsCtx(ctx), h.ID, argv)
+	if corrOpt != "" {
+		argv = append(argv, corrOpt)
+	}
+	timeout := s.Analysis.Timeout
+	raw, err := call(argv, timeout)
+	switch {
+	case ctx.Err() != nil:
+		return none, analysisOutcome{}, 499, "request cancelled"
+	case errors.Is(err, hosts.ErrHostRunTimeout):
+		return none, analysisOutcome{}, 504, fmt.Sprintf(slow, timeout.String())
+	case errors.Is(err, hosts.ErrInvalid):
+		return none, analysisOutcome{}, 409, err.Error()
+	case errors.Is(err, hosts.ErrHostRunFailed):
+		return none, analysisOutcome{}, 502, err.Error()
+	case err != nil:
+		s.reach.set(h.ID, false)
+		return none, analysisOutcome{}, 502, msgHostUnreachable
+	}
+	s.reach.set(h.ID, true)
+	var res hostReply
+	if json.Unmarshal(raw, &res) != nil {
+		return none, analysisOutcome{}, 502, "the host answered unexpectedly"
+	}
+	if !res.OK {
+		if res.Error != "" {
+			return none, analysisOutcome{}, 422, res.Error
+		}
+		return none, analysisOutcome{}, 422, "the program could not be run on this file on the host"
+	}
 	for _, hh := range corrHashes {
 		if !slices.Contains(res.Applied, hh) {
-			return analysisOutcome{}, "", 502, "the program on the host did not apply the researcher's corrections (it may be an older version); no result was recorded"
+			return none, analysisOutcome{}, 502, "the program on the host did not apply the researcher's corrections (it may be an older version); no result was recorded"
 		}
 	}
-	return analysisOutcome{res.Summary, res.Software, corrSnap}, res.File, 0, ""
+	return res, analysisOutcome{Summary: res.Summary, Software: res.Software, Corrections: corrSnap, Files: res.Extra}, 0, ""
 }
 
 // hostFileNamed reports whether p is the resolved absolute path of a file called name.

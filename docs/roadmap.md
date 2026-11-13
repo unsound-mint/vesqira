@@ -17,7 +17,10 @@ Do first: it makes the viewer claims measurable and unblocks scrubbing on large 
 - [x] Spectrum read through the memory map in channel blocks, vectorised: a box spectrum 5x faster, the size cap raised from 2e8 to 1e9 pixel-channels (Q92).
 - [x] Large planes on a remote host show a block-mean preview first (labelled as a preview, drawn on the full grid) and the full plane once the channel settles; neighbouring channels are prefetched into the server cache (Q182, Q185). A browser-side plane cache was not added: the server cache is on loopback and a browser copy would need its own staleness rule.
 - [x] Worker memory cap (RLIMIT_DATA on top of what the loaded libraries hold, `VESQIRA_WORKER_MEM_MB`, default 3072; read-only file maps are not counted, so any cube size still opens). An allocation over the cap fails that request only. Per-request time is bounded by the lane timeout.
-- [ ] Not yet measured: real disk, ssh, 4D cubes, list virtualisation at scale, resumable transfers.
+- [x] Measured on 2026-11-13 (docs/performance.md, `make bench-disk`; AMD Ryzen 9 7940HS, 14 GiB RAM, Micron 2400 NVMe, btrfs, Linux 7.2, shared with other work at load average 7 to 60, so ranges over four runs are given): cold and warm reads on a 5 GiB dense cube, the same reads through a real ssh to a user-mode sshd on loopback, 4D cubes (length-1 STOKES axis reads like 3D; a Stokes axis longer than one is refused), peak memory and reply bytes per row, and an interrupted-and-resumed 1 GiB download. Resumable transfers themselves were already built (ADR 0051) and tested through the ssh stand-in (resume after a dropped connection, after a closed app, cancel, no overwrite, hash on both ends, one transfer per host); the measurement shows a resumed 1 GiB download re-sending only the missing part.
+- [x] The dataset list and the run list draw only the rows near the viewport above 200 rows, with `aria-posinset` and `aria-setsize` and keyboard movement by index; 5000 datasets render in 44 ms (was 1020 ms) in vitest and the page holds 738 nodes with 5000 datasets and 5000 runs in Chromium.
+- [x] The cold first spectrum (1.3 to 2.3 s for a 10 x 10 box, 2 to 4.5 s for 187 x 187 on the 5 GiB cube): the cause was a 4 MiB readahead per page fault (2400 MiB read for a 36 MB box). Fixed with madvise hints (docs/performance.md): 21 ms and 34 MiB read, and 362 ms and 642 MiB. A download killed by SIGKILL of rsync now resumes from its orphaned temporary file.
+- [ ] Still open in Stage P: no measurement over a real network link (latency, bandwidth, a dropped VPN): ssh was loopback only. A Stokes axis longer than one is not supported. An upload killed by SIGKILL of rsync restarts that file (the temporary is on the host, which Vesqira does not delete from). Resume costs a checksum pass (140 to 380 MiB/s of kept data), so on a link faster than that a restart is quicker: not an issue for a VPN.
 
 ## Stage L — The integrated loop (owner direction, 2026-11-05)
 
@@ -70,7 +73,7 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] 1: analysis presets; results stop citing the owner's script lines
 - [x] 2: orientation conventions from a header-card profile; "unresolved" instead of an assumed default
 - [x] 3: run detection and generic output roles (schema 35)
-- [x] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps); no schema change, GaussPy+ not shipped (layout not verified)
+- [x] 4: format-neutral decompositions (ROHSA `.dat` and FITS maps, also read on a host per pixel; HDUs by name and EXTVER; a cell click uses the pixel index for maps too); no schema change, GaussPy+ not shipped (layout not verified). the review (diagram, cell click, class maps) of a run kept on a host runs on the host: index in its cache folder, class maps written there as host datasets; stand-in host only, no real cluster
 - [x] 5: run templates as data (steps, typed keys, command, probes, progress); a synthetic tool runs through the fake Slurm path; schema unchanged
 - [x] 6: a project's own profiles from `.vesqira/profiles/` (declared, never verified; a scan lists, the person imports; no job templates); generic result import for any profiled tool; `vgtHeader` and the `psi` fallbacks removed
 - [ ] Not built: project orientation card tables, profiles on host projects, job templates from a project folder
@@ -80,13 +83,17 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] A board's snapshots are its rounds. A later round embeds, frozen at publish, what changed since the round before: figures added, removed or redrawn, title, caption and note changes, corrections and masks (from the frozen provenance only), access label and run-state changes. The reviewer sees "Changed since <date>" and a New / Redrawn / Unchanged marker in words on each figure.
 - [x] Comments carry over, read-only and labelled with their round, onto the same figure (same revision, or the same drawing redrawn). The earlier picture of a redrawn figure is shown only while the earlier link is valid; a revoked earlier round's text and comments are withheld.
 - [x] Owner: round numbers and the per-round change list on the board's snapshots, and the round a publish would make in the preflight.
+- [x] Two publishes of one board at the same moment never share a round number: the loser rebuilds against the new round or gets a clear 409.
 - [ ] Not done: a figure replaced by a different figure with no draw-again link counts as removed and added; matching by title or by data would be a guess.
 
 ## Spectral smoothing and the family view (issue 133, ADR 0070, awaiting owner review)
 
 - [x] Spectral smoothing of a cube as a derived operation: boxcar, Gaussian or Hanning, width in channels (in the spectral unit only on a calibrated axis), kernel and minimum valid weight recorded, NaN kept, no in-place change, optional recorded decimation, the effective resolution stated only from a declared native response.
 - [x] Family view: maps that differ in one parameter side by side on a shared scale, each compared with a chosen reference (scalar difference and spread, or axial difference and AM for orientation maps), refused with a sentence when the grids are not shared. A family is recognised from derived records and can be picked by hand.
-- [ ] Not built: opening a family from a sweep of jobs, a family of maps on a host, cleanup of old family maps, a design review by a second person.
+- [x] Open a family from a sweep of jobs: the outputs of one chosen run role, labelled by the parameters that differ; jobs with another grid, frame or unit, no result or an undeclared orientation are listed with the reason and not compared.
+- [x] A family of maps on a host, compared by the host's worker where the files are (bounded reply, all-or-none placement of the results, cancellation, a clear refusal when the host cannot); nothing is copied here.
+- [x] Clean-up of family maps: list them by run and remove the ones nothing uses; a map used by a figure, board, report, published review or a derived dataset is kept with the reason; sources are never touched; no automatic policy.
+- [ ] Not built: deleting the result files on a host, a real-host run, a browser test that opens a sweep, a design review by a second person.
 
 ## Sky context (issue 134, ADR 0072, awaiting owner review)
 
@@ -94,7 +101,11 @@ Vesqira gives tools, not one group's pipeline. VGT.jl, ROHSA and ROHSA-LMC becom
 - [x] The viewer cursor (hover or pinned pixel) shown as a world position, and a click on an outline or list entry opens the dataset.
 - [x] Opt-in survey background (Aladin Lite 3.8.2, bundled, loaded after opt-in): off by default, the contacted server and what it receives stated before it is contacted, context only, stored per browser. Works fully offline without it.
 - [x] Local PNG of the panel; the survey is in it only when ticked for that file, with its name, HiPS id and provider in the caption.
-- [ ] Not built: a survey background inside a registered board figure with HiPS provenance, footprints for virtual subsets, a check against the live survey servers, a second person's design review.
+- [x] Footprints and the cursor link for virtual subsets: the worker applies the subset's window to the parent's WCS (ADR 0072).
+- [x] The sky view as a registered figure (schema 36): HiPS id, survey name, provider and credit, frame, field and centre, and each drawn file with its WCS basis in the provenance; the survey is labelled context only in the picture, the reviewer page and exports; the access labels of the drawn datasets apply to publishing it.
+- [x] A sky figure records what its picture shows: only outlines that meet the saved field, and with the survey in the picture the field is read back from Aladin (checked in the 3.8.2 source and by an e2e that drags it, in ICRS and Galactic).
+- [x] Fixed: the survey background never started with the real library (an array `backgroundColor`); a failed start now says so.
+- [ ] Not built: a check against the live survey servers, a second person's design review.
 
 ## Stage S — Scene, cross-tracer comparison and the researcher's loop (owner direction, 2026-11-11)
 
@@ -115,7 +126,7 @@ The owner asked for the most convenient app for this kind of work, beyond the in
 - [x] Figures as scenes: draw again (data and declaration changes announced first; a redraw is a new linked figure), SVG export from the same marks (ADR 0042 §5).
 - [x] Channel-map grid (shared scale, converted spectral labels, slab means) and position-velocity diagram along a line or polyline (offsets as sky separations; bilinear or nearest sampling, stated) (ADR 0049).
 - [x] Gaussian decomposition browser for ROHSA results: component curves over the spectrum at a pixel (streamed index of the .dat), component and residual maps, CNM versus the rest with the width cut as a declared input (ADR 0046).
-- [~] Review of a whole ROHSA decomposition (issue 131, ADR 0046 note): a sigma-v diagram (width against centroid velocity, weighted by integrated intensity, optically thin column density or component count, user bins, contributor counts, log scale, SVG and PNG with provenance), the pixels behind a clicked cell marked on the maps, and one derived map per width class (the cut or user edges; NaN where nothing valid was fitted, 0 where nothing of the class is) registered with the run, the weight and the edges; a map pixel opens its spectrum with the components. Local fits only; the diagram and the class maps each read the whole `.dat` (minutes for 20 GB, measured only on a synthetic file), a cell click reads only the 2-bytes-per-row index the diagram wrote; the column-density constant is not checked against the pipeline; no design review, no browser check.
+- [~] Review of a whole ROHSA decomposition (issue 131, ADR 0046 note): a sigma-v diagram (width against centroid velocity, weighted by integrated intensity, optically thin column density or component count, user bins, contributor counts, log scale, SVG and PNG with provenance), the pixels behind a clicked cell marked on the maps, and one derived map per width class (the cut or user edges; NaN where nothing valid was fitted, 0 where nothing of the class is) registered with the run, the weight and the edges; a map pixel opens its spectrum with the components. A fit on a host is reviewed on the host (ADR 0068); the diagram and the class maps each read the whole `.dat` (minutes for 20 GB, measured only on a synthetic file), a cell click reads only the 2-bytes-per-row index the diagram wrote; the column-density constant is not checked against the pipeline; no design review, no browser check.
 - [x] Job finished: jobs are watched while the app runs (batched squeue/sacct per host, backoff when unreachable), a notification list and an optional desktop notification, and finished VGT outputs imported once as a run (ADR 0043).
 - [x] Host quota and run-directory sizes; job efficiency from sacct (elapsed, MaxRSS against the request, CPU when accounted) offered when running again, applied only on a click; sacct columns a site lacks fall back without affecting state tracking (ADR 0045).
 
@@ -206,9 +217,11 @@ The owner chose a shared multi-user server (ADR 0028 option B). Its design ADR c
 
 Needs an ADR before code: it changes the security boundary.
 
-- [ ] Accounts and roles per project and per cluster (Q29–Q31). Design in ADR 0050, accepted with the owner's answers of 2026-11-12; slices built in order.
-- [ ] Push from a local instance and run requests relayed to the key holder's own instance (ADR 0050 slices 4 and 5), specified in [ADR 0066](adr/0066-push-to-the-group-server-and-relayed-run-requests.md). Push is implemented (slice 4, schema 32); `multiuser import` is a dry run only and writes nothing; relayed run requests (slice 5) are not implemented.
-- [ ] Authentication before anyone but the owner can act; delegation and approval lifecycle for other users' requests (Q44, Q71).
+- [x] Accounts and roles per workspace (Q29–Q31), ADR 0050 slices 1 to 3.
+- [x] Push from a local instance (slice 4, schema 32) and run requests relayed to the key holder's own instance, approved there against the exact script (slice 5, schema 33), specified in [ADR 0066](adr/0066-push-to-the-group-server-and-relayed-run-requests.md).
+- [x] `multiuser import` of a local catalog into a new group workspace: all or nothing, paths rewritten only through explicit `--map` prefixes, `--dry-run` lists the same plan (ADR 0050 slice 4).
+- [x] Sign-in before anyone but the owner can act, and an approval lifecycle for other people's run requests (Q44, Q71), ADR 0050 slices 2 and 5.
+- [ ] Preapproved templates and budgets for trusted collaborators (deferred in ADR 0050; every request needs an explicit approval today).
 - [x] Worker memory cap and the authorize-then-open window for source files. The memory cap applies to every worker entry point and its setting reaches the workers. Every source read goes through `srcopen.py` in the worker and `sourceroot.OpenFile` in the API: the resolved path is opened without following a link, so a component swapped after the check is refused (ADR 0050, section 8). The device and inode a location had when it was recorded (schema 27) are compared when a dataset is read, and sent to the worker with the plane requests, which refuse another file with a sentence; the other worker ops do not carry them yet. The file tree opens its folder without following a link and shows links with their target and where they point; the worker's own listings (`walk`, `list`, `canon`) and the path completion still use path names.
 
 ## Stage 8 — Later phases (kept, not scheduled)

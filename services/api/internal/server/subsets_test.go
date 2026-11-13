@@ -42,7 +42,9 @@ func (s stripWindow) Do(ctx context.Context, req map[string]any) (worker.Reply, 
 	return s.inner.Do(ctx, req)
 }
 
-func newSubEnv(t *testing.T, wrap func(PlaneService) PlaneService) *subEnv {
+// newSubEnv builds a server over the real worker and the generated fixtures. A test that needs more of the server (the access store,
+// say) passes options, which see the server before it starts.
+func newSubEnv(t *testing.T, wrap func(PlaneService) PlaneService, opts ...func(*Server, *catalog.Store)) *subEnv {
 	t.Helper()
 	repo, _ := filepath.Abs("../../../..")
 	if exec.Command("python3", "-c", "import astropy").Run() != nil {
@@ -75,8 +77,12 @@ func newSubEnv(t *testing.T, wrap func(PlaneService) PlaneService) *subEnv {
 		t.Fatal(err)
 	}
 	au, _ := audit.Open(st.DB())
-	ts := httptest.NewServer((&Server{Roots: rs, Store: st, Worker: pw, Planes: planes, Boards: bs, Derived: ds, Regions: rg, Subsets: sb, Audit: au, Cache: NewPlaneCache(8 << 20),
-		Analysis: &AnalysisConfig{Python: "python3", Script: filepath.Join(repo, "services/scientific-worker/analysis.py"), DerivedDir: derivedDir, Timeout: 2 * time.Minute}}).Handler())
+	srv := &Server{Roots: rs, Store: st, Worker: pw, Planes: planes, Boards: bs, Derived: ds, Regions: rg, Subsets: sb, Audit: au, Cache: NewPlaneCache(8 << 20),
+		Analysis: &AnalysisConfig{Python: "python3", Script: filepath.Join(repo, "services/scientific-worker/analysis.py"), DerivedDir: derivedDir, Timeout: 2 * time.Minute}}
+	for _, o := range opts {
+		o(srv, st)
+	}
+	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	gen := exec.Command("python3", filepath.Join(repo, "fixtures/generate.py"), root)
 	gen.Dir = filepath.Join(repo, "fixtures")

@@ -7,6 +7,9 @@
     "spectrum_small": {"p95_ms": 200, "rss_mb": 400},
     "register": {"p95_ms": 50, "rss_mb": 400},
     "plane_under_load": {"p95_ms": 450, "rss_mb": 400},
-    "spectrum_box": {"p95_ms": 2000, "rss_mb": 600}
+    "spectrum_box": {"p95_ms": 2000, "rss_mb": 600},
+    "plane_4d": {"p95_ms": 300, "rss_mb": 400},
+    "spectrum_small_4d": {"p95_ms": 200, "rss_mb": 400},
+    "spectrum_box_4d": {"p95_ms": 2000, "rss_mb": 600}
   }
 }

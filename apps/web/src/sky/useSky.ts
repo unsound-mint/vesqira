@@ -4,6 +4,8 @@ import { getSkyFootprint, getSkyPoint } from "../api/sky";
 import type { SkyFootprint, SkyFrame } from "../api/sky";
 import { isCatalog, isHealpix } from "../api/catalog";
 import type { Dataset } from "../api/catalog";
+import type { SubsetView } from "../api/subsets";
+import { virtualId } from "../api/planes";
 
 /** At most this many footprints are asked for; the panel says how many were left out. Each is one worker read of a header. */
 export const MAX_FOOTPRINTS = 120;
@@ -22,14 +24,37 @@ export type SkyItem = {
   fromStatus: string | null;
 };
 
-/** What a dataset's footprint rests on: its identity, and the corrections in force, which move the WCS. */
+/**
+ * One row of the panel: a registered dataset (its id) or a virtual subset (the viewer's id for it, the negative of the subset's id,
+ * ADR 0063). `none` is set for a row that is listed with a reason and never asked of the worker. `stamp` is what its footprint
+ * rests on: its identity, the corrections in force on the file, and for a subset the version of the window.
+ */
+type Entry = { id: number; name: string; stamp: string; none: string | null };
+
 const stamp = (d: Dataset) => `${d.id}|${d.modifiedAt}|${JSON.stringify(d.corrections ?? null)}`;
+
+const STALE = "the file this subset was defined on has changed, so its window is not drawn until it is re-pinned";
+
+function entriesOf(list: Dataset[], subsets: SubsetView[]): Entry[] {
+  const out: Entry[] = list.map((d) => ({
+    id: d.id,
+    name: d.name,
+    stamp: stamp(d),
+    none: isCatalog(d) ? "a point catalog has no image grid, so no footprint is drawn" : isHealpix(d) ? "a HEALPix map has no WCS of its own, so no footprint is drawn" : null,
+  }));
+  for (const sub of subsets) {
+    const src = list.find((d) => d.id === sub.sourceId); // an archived, deleted or non-image source leaves the subset out
+    if (!src || isCatalog(src) || isHealpix(src)) continue;
+    out.push({ id: virtualId(sub.id), name: `${sub.name} (subset)`, stamp: `s${sub.id}|v${sub.version}|${stamp(src)}`, none: sub.stale ? STALE : null });
+  }
+  return out;
+}
 
 type Done = { fp: SkyFootprint } | { error: string };
 const cache = new Map<string, Promise<Done>>();
 
-function fetchOne(d: Dataset, frame: SkyFrame): Promise<Done> {
-  const key = `${stamp(d)}|${frame}`;
+function fetchOne(d: Entry, frame: SkyFrame): Promise<Done> {
+  const key = `${d.stamp}|${frame}`;
   let p = cache.get(key);
   if (!p) {
     p = getSkyFootprint(d.id, frame).then(
@@ -44,7 +69,7 @@ function fetchOne(d: Dataset, frame: SkyFrame): Promise<Done> {
   return p;
 }
 
-const fromFootprint = (d: Dataset, fp: SkyFootprint): SkyItem => {
+const fromFootprint = (d: Entry, fp: SkyFootprint): SkyItem => {
   const f = fp.footprint;
   return {
     id: d.id,
@@ -61,10 +86,10 @@ const fromFootprint = (d: Dataset, fp: SkyFootprint): SkyItem => {
  * The footprint of every registered image, in the panel's frame, read a few at a time. A point catalog or HEALPix map has no image
  * grid and is listed as having none. Nothing here depends on the network background: footprints come from the local API only.
  */
-export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true) {
+export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true, subsetList: SubsetView[] = NO_SUBSETS) {
   const list = useMemo(() => all.filter((d) => !d.archived), [all]);
-  const shown = useMemo(() => list.slice(0, MAX_FOOTPRINTS), [list]);
-  const key = shown.map(stamp).join("\n") + "|" + frame;
+  const shown = useMemo(() => entriesOf(list.slice(0, MAX_FOOTPRINTS), subsetList), [list, subsetList]);
+  const key = shown.map((e) => e.stamp).join("\n") + "|" + frame;
   const [done, setDone] = useState<{ key: string; byId: Map<number, SkyItem> }>({ key: "", byId: new Map() });
   const latest = useRef(shown);
   latest.current = shown;
@@ -72,10 +97,9 @@ export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true) {
     if (!enabled) return;
     let live = true;
     const byId = new Map<number, SkyItem>();
-    const queue = latest.current.filter((d) => !isCatalog(d) && !isHealpix(d));
+    const queue = latest.current.filter((d) => d.none === null);
     for (const d of latest.current) {
-      if (isCatalog(d)) byId.set(d.id, { id: d.id, name: d.name, state: "none", reason: "a point catalog has no image grid, so no footprint is drawn", outline: null, fromFrame: null, fromStatus: null });
-      else if (isHealpix(d)) byId.set(d.id, { id: d.id, name: d.name, state: "none", reason: "a HEALPix map has no WCS of its own, so no footprint is drawn", outline: null, fromFrame: null, fromStatus: null });
+      if (d.none !== null) byId.set(d.id, { id: d.id, name: d.name, state: "none", reason: d.none, outline: null, fromFrame: null, fromStatus: null });
     }
     const publish = () => live && setDone({ key, byId: new Map(byId) });
     publish();
@@ -98,8 +122,10 @@ export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true) {
     () => shown.map((d) => (done.key === key ? done.byId.get(d.id) : undefined) ?? { id: d.id, name: d.name, state: "loading", reason: null, outline: null, fromFrame: null, fromStatus: null }),
     [shown, done, key],
   );
-  return { items, omitted: Math.max(0, list.length - shown.length) };
+  return { items, omitted: Math.max(0, list.length - MAX_FOOTPRINTS) };
 }
+
+const NO_SUBSETS: SubsetView[] = [];
 
 export type Cursor = { state: "off" | "loading" | "ready" | "none"; lon: number | null; lat: number | null; reason: string | null };
 const OFF: Cursor = { state: "off", lon: null, lat: null, reason: null };

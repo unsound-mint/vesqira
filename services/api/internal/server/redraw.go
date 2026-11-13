@@ -276,6 +276,11 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 		res.Prompt = "A cross-run plot is drawn again from the runs in the catalog now. The page lists the runs that were added, left out or changed before it saves anything."
 		return res
 	}
+	if f.Kind == boards.KindSky { // a record of what the sky panel showed: a new view is saved from the panel, never recomputed here (ADR 0072)
+		res.Kind, res.State = "sky", "none"
+		res.Prompt = "A sky view is a record of what the Sky panel showed when it was saved. To update it, set the panel to the view you want and save a new one."
+		return res
+	}
 	kind, ids, sc, ok, why := figureSources(f)
 	res.Kind = kind
 	if !ok {
