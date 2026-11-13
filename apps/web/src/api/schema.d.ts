@@ -12211,6 +12211,8 @@ export interface components {
             probes?: string[];
             /** @description A built-in sizing table shown beside the request (rohsa_crop_table), or empty */
             sizing?: string;
+            /** @description The setting a new sweep row starts on; empty means the first key a sweep may vary */
+            sweepKey?: string;
         };
         JobTemplateList: {
             templates: components["schemas"]["JobTemplate"][];

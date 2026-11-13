@@ -58,7 +58,7 @@ export function keyHint(k: TemplateKey): string {
   else if (k.min !== undefined && k.max !== undefined) parts.push(`${k.min} to ${k.max}`);
   else if (k.min !== undefined) parts.push(`at least ${k.min}`);
   else if (k.max !== undefined) parts.push(`at most ${k.max}`);
-  if (k.default) parts.push(`the tool's documented default is ${k.default.value}`);
+  if (k.default) parts.push(`the tool's documented default is ${k.default.value}${k.default.reason ? `, ${k.default.reason}` : ""}`);
   return parts.join("; ");
 }
 

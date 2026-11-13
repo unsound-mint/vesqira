@@ -38,6 +38,7 @@ export const vgtTemplate: JobTemplate = {
   id: "vgt",
   title: "VGT run",
   tool: "VGT",
+  sweepKey: "dn",
   resources: { ...base.resources, cpus: 32, mem: "64G", time: "1-00:00:00" },
   repo: { ...base.repo, folderLabel: "VGT folder on the host", placeholder: "/shared/home/you/vgt" },
   keys: [
@@ -58,6 +59,7 @@ export const rohsaTemplate: JobTemplate = {
   id: "rohsa",
   title: "ROHSA decomposition",
   tool: "ROHSA",
+  sweepKey: "n_gauss",
   resources: { ...base.resources, cpus: 32, mem: "64G", time: "1-00:00:00" },
   about: "Runs the ROHSA build-and-decompose script on a copy of a ROHSA config from the host. The output folder is set for each job.",
   repo: { ...base.repo, folderLabel: "ROHSA-LMC folder on the host", placeholder: "/shared/home/you/ROHSA-LMC" },

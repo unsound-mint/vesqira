@@ -65,6 +65,12 @@ describe("run again with…", () => {
     expect(posts[0]!.body).toMatchObject({ hostId: 1, template: "vgt", parentRunId: 1, note: "wider smoothing", tool: { repoDir: "/shared/vgt", configPath: "/data/configs/a.toml", configText: baseText, set: { dn: "12", ker: "16" }, cpus: 16, mem: "64G", time: "02:00:00" } });
   });
 
+  it("reads a VGT job's starting values from its config text even when the server sends an empty settings object", async () => {
+    mockFetch({ ...fromJob, settings: {} });
+    render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={() => {}} />);
+    expect(await screen.findByLabelText(/^ker \(smoothing/)).toHaveValue("8");
+  });
+
   it("starts with the parent job's commit pin, lets it be changed, and says a strict rerun's own commit wins", async () => {
     const posts = mockFetch({ ...fromJob, vgt: { ...fromJob.vgt, pinProfile: true } });
     render(<RerunDraft run={run()} hosts={[host]} onBack={() => {}} onPrepared={() => {}} />);

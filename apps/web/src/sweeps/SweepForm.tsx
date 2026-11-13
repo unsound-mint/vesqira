@@ -19,7 +19,7 @@ export function SweepForm({ jobs, templates, baseJobId, onCreated }: { jobs: Job
   const t = templates?.find((x) => x.id === template) ?? null;
   const KEYS = t ? sweepKeys(t) : [];
   // a row starts on the first plain setting; a tie (one setting for several keys) is a deliberate choice, not a default
-  const firstKey = KEYS.find((k) => !(t?.ties ?? []).some((x) => x.name === k.key))?.key ?? KEYS[0]?.key ?? "";
+  const firstKey = KEYS.find((k) => k.key === t?.sweepKey)?.key ?? KEYS.find((k) => !(t?.ties ?? []).some((x) => x.name === k.key))?.key ?? KEYS[0]?.key ?? "";
   const [name, setName] = useState(`${template || "tool"}-sweep`);
   const [note, setNote] = useState("");
   const [rows, setRows] = useState<Row[]>([{ key: "", label: "", values: "" }]);

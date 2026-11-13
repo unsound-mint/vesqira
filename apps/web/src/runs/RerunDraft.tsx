@@ -24,8 +24,8 @@ function declared(rerun: Rerun, key: string): string {
 }
 
 /** The value a setting had in the run being repeated: the job's own override, else the config text it started from. */
-function baseline(rerun: Rerun, key: string): string {
-  if (rerun.settings) return rerun.settings[key] ?? ""; // ROHSA: read by the server from the config the job ran, or declared by the run's trace
+function baseline(rerun: Rerun, key: string, byName: boolean): string {
+  if (byName) return rerun.settings?.[key] ?? ""; // ROHSA: read by the server from the config the job ran, or declared by the run's trace
   if (rerun.source === "imported") return declared(rerun, key);
   return rerun.vgt.set[key] ?? (rerun.vgt.baseConfigText ? readSetting(rerun.vgt.baseConfigText, key) : "");
 }
@@ -95,7 +95,7 @@ function Form({ run, rerun, template: t, hosts, onPrepared }: { run: Run; rerun:
   const req = rerun.rohsa ?? rerun.vgt;
   const fields = editableKeys(t);
   const declaredBase: Record<string, string> = {};
-  for (const st of fields) declaredBase[st.name] = baseline(rerun, st.name);
+  for (const st of fields) declaredBase[st.name] = baseline(rerun, st.name, t.config.edit === "by_name");
   const hostKnown = rerun.hostId !== null && hosts.some((h) => h.id === rerun.hostId);
 
   const [vals, setVals] = useState<Record<string, string>>(declaredBase);
