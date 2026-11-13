@@ -98,7 +98,10 @@ type relayEnv struct {
 
 const relayLabel = "Lab A"
 
-func newRelayEnv(t *testing.T) *relayEnv {
+func newRelayEnv(t *testing.T) *relayEnv { t.Helper(); return newRelayEnvWith(t, nil) }
+
+// newRelayEnvWith lets prep change the stand-in host before the base job is drafted (its config, for example).
+func newRelayEnvWith(t *testing.T, prep func(*watchEnv)) *relayEnv {
 	t.Helper()
 	g, gts, _ := pushGroup(t)
 	rs, err := relay.Open(g.cat.DB())
@@ -119,6 +122,9 @@ func newRelayEnv(t *testing.T) *relayEnv {
 	}](t, w).Token
 
 	e := newWatchEnv(t)
+	if prep != nil {
+		prep(e)
+	}
 	base := t.TempDir()
 	ob, err := outbox.Open(e.srv.Store.DB(), filepath.Join(base, "outbox"))
 	if err != nil {

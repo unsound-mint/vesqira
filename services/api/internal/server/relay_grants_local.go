@@ -499,3 +499,43 @@ func (s *Server) relayLocalMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{"members": keep})
 }
+
+// grantPin is the commit a draft insists on when its base run gives none and the request names a live grant of this computer made
+// for its requester: the grant's commit (the profile's, through the profile pin, or the typed one). A base run's own commit is
+// never replaced, so a strict-commit requirement stays; a grant whose commit differs then falls back with the code commit.
+func (s *Server) grantPin(m relay.Mirrored, rev string, pinProfile bool) (string, bool) {
+	g, ok := s.grantOf(m)
+	if !ok {
+		return rev, pinProfile
+	}
+	if g.CommitBasis == "profile" {
+		return rev, true
+	}
+	return g.Commit, pinProfile
+}
+
+func (s *Server) grantOf(m relay.Mirrored) (relay.Grant, bool) {
+	if m.Request.Ask.Grant == "" || len(m.Request.Ask.Grid) > 0 {
+		return relay.Grant{}, false
+	}
+	g, err := s.Relayed.GrantByID(m.Request.Ask.Grant)
+	if err != nil || g.Origin() != m.Origin() || g.RequesterID != m.Request.RequesterID || !g.Live(s.relayClock()) {
+		return relay.Grant{}, false
+	}
+	return g, true
+}
+
+// grantPinWhy says, for the approval view, that the commit the script insists on came from the standing approval.
+func (s *Server) grantPinWhy(m relay.Mirrored, req jobs.VGTRequest) string {
+	g, ok := s.grantOf(m)
+	if !ok || (req.ExpectCommit != g.Commit && !(req.ExpectCommit == "" && req.PinProfile && g.CommitBasis == "profile")) {
+		return ""
+	}
+	if m.BaseRunID != nil {
+		if rev, _ := s.relayPin(*m.BaseRunID); rev != "" {
+			return "" // the base run's own commit
+		}
+	}
+	return "The script insists on commit " + g.Commit + ", the one the standing approval allows (the base run's code is not described by one commit here: " +
+		s.relayWhyUnpinned(m) + "). The job stops before the program starts unless the code folder on the host is at that commit with no changed tracked file."
+}

@@ -317,6 +317,10 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 	}
 	ref := fmt.Sprintf("request %d from %s", m.ServerID, m.Request.Requester)
 	rev, mode := s.relayPin(baseRunID)
+	pinProfile := req.PinProfile
+	if rev == "" {
+		rev, pinProfile = s.grantPin(m, rev, pinProfile)
+	}
 	draft := relay.DraftValues{Params: params, Resources: res, Label: strings.TrimSpace(ask.Label)}
 	ctx = localCtx(ctx)
 	if len(ask.Grid) == 0 {
@@ -338,7 +342,7 @@ func (s *Server) renderRelayed(ctx context.Context, m relay.Mirrored, baseRunID 
 			tm = req.Time
 		}
 		b, aerr := s.buildJob(ctx, h, base.Template, name, draftInput{RepoDir: req.RepoDir, ConfigPath: req.ConfigPath, ConfigText: req.BaseConfigText, Set: set,
-			CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: mode, ExpectRev: rev, PinProfile: req.PinProfile})
+			CPUs: cpus, Mem: mem, Time: tm, Partition: req.Partition, Account: req.Account, HashInput: req.HashInput, RerunMode: mode, ExpectRev: rev, PinProfile: pinProfile})
 		if aerr != nil {
 			return aerr
 		}
@@ -417,6 +421,9 @@ func (s *Server) relayPin(baseRunID int64) (rev, mode string) {
 // relayCode says, for the approval view, which code the draft runs: the commit its script insists on, or why it insists on none.
 func (s *Server) relayCode(m relay.Mirrored, j jobs.Job) string {
 	req, haveReq := j.ConfigRequest()
+	if why := s.grantPinWhy(m, req); haveReq && why != "" {
+		return why
+	}
 	if haveReq && req.ExpectCommit != "" {
 		return "The script insists on commit " + req.ExpectCommit + ", the base run's: the job stops before the program starts unless the code folder on the host is at that commit with no changed tracked file."
 	}

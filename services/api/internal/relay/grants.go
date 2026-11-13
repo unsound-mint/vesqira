@@ -206,11 +206,20 @@ func CheckGrantTerms(in Inbox, g Grant, now time.Time) error {
 	if err := checkGrantKeys(t, g.Keys); err != nil {
 		return err
 	}
-	pj := g.PerJob
+	// per job, never more than the inbox lets a request ask for; where the inbox lets a request choose nothing (0), the job keeps
+	// the base run's resources and the cap bounds those, up to the relay's own maximum
+	pj, lim := g.PerJob, t.Limits
+	within := func(inbox, max int) int {
+		if inbox > 0 {
+			return inbox
+		}
+		return max
+	}
 	for _, c := range []struct {
 		v, max int
 		what   string
-	}{{pj.MaxCPUs, MaxCPUs, "CPUs"}, {pj.MaxMemGiB, MaxMemGiB, "memory (GiB)"}, {pj.MaxTimeMinutes, MaxTimeMinutes, "wall time (minutes)"}} {
+	}{{pj.MaxCPUs, within(lim.MaxCPUs, MaxCPUs), "CPUs"}, {pj.MaxMemGiB, within(lim.MaxMemGiB, MaxMemGiB), "memory (GiB)"},
+		{pj.MaxTimeMinutes, within(lim.MaxTimeMinutes, MaxTimeMinutes), "wall time (minutes)"}} {
 		if c.v < 1 || c.v > c.max {
 			return refuse("per job, %s is 1 to %d", c.what, c.max)
 		}
