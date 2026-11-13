@@ -123,7 +123,7 @@
   position: absolute;
   width: 11px;
   height: 11px;
-  margin: -6px 0 0 -6px;
+  transform: translate(-50%, -50%);
   border: 2px solid #fff;
   outline: 1px solid #000;
   border-radius: 50%;
