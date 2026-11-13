@@ -7,6 +7,7 @@ import type { Run } from "../api/runs";
 import { FilterBox } from "../ui";
 import { matchDataset, matchRun, tokenize, unquote } from "./filter";
 import { datasetVocabulary, runVocabulary } from "./vocabulary";
+import { withFacts } from "./testDatasets";
 
 const metric = (key: string, value: number | null) => ({ key, value, unit: "", uncertainty: null, uncertaintyKind: "" as const, n: null, definition: "", status: "declared" as const });
 const run = (id: number, params: Record<string, string>, over: Partial<Run> = {}): Run =>
@@ -60,7 +61,7 @@ describe("runVocabulary", () => {
 });
 
 describe("datasetVocabulary", () => {
-  const ds = (id: number, bunit: string | null, hostId = 0, nature = ""): Dataset => ({ id, name: `d${id}.fits`, hostId, nature, header: { bunit } }) as unknown as Dataset;
+  const ds = (id: number, bunit: string | null, hostId = 0, nature = ""): Dataset => withFacts({ id, name: `d${id}.fits`, hostId, nature, header: { bunit } }) as unknown as Dataset;
   const list = [ds(1, "K"), ds(2, "K", 1, "observed"), ds(3, null), ds(4, "Jy/beam")];
   const v = datasetVocabulary(list, [{ id: 1, name: "cluster" }]);
   it("offers units as declared and a separate 'no unit declared' that maps to unit:none", () => {
@@ -172,14 +173,14 @@ describe("quoted values", () => {
     expect(matchRun(r, 'label="demo"')).toBe(false);
     expect(matchRun(r, 'label="demo run ker=8')).toBe(false); // unterminated quote swallows the rest
     expect(matchRun(r, 'label="demo run" ker=8')).toBe(true);
-    const d = (bunit: string) => ({ name: "x.fits", nature: "", header: { bunit } }) as unknown as Dataset;
+    const d = (bunit: string) => withFacts({ name: "x.fits", nature: "", header: { bunit } }) as unknown as Dataset;
     expect(matchDataset(d("km / s"), 'unit:"km / s"', undefined)).toBe(true);
     expect(matchDataset(d("km"), 'unit:"km / s"', undefined)).toBe(false);
     expect(matchDataset(d("K"), 'host:"my cluster"', "My Cluster")).toBe(true);
   });
   it("a value with a space is offered, written quoted, shown without quotes, and round-trips", async () => {
     const u = userEvent.setup();
-    const ds = (id: number, bunit: string): Dataset => ({ id, name: `d${id}.fits`, hostId: 0, nature: "", header: { bunit } }) as unknown as Dataset;
+    const ds = (id: number, bunit: string): Dataset => withFacts({ id, name: `d${id}.fits`, hostId: 0, nature: "", header: { bunit } }) as unknown as Dataset;
     const list = [ds(1, "km / s"), ds(2, "K")];
     function Sets() {
       const [q, setQ] = useState("");

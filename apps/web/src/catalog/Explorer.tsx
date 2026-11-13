@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Database, Layers, Table } from "lucide-react";
-import { isCatalog, isHealpix } from "../api/catalog";
-import type { Dataset, Problem } from "../api/catalog";
+import { isCatalog, isHealpix, type DatasetSummary } from "../api/catalog";
+import type { Problem } from "../api/catalog";
 import { Button, FilterBox, PathField, TreeRow, VirtualList } from "../ui";
 import { bytes } from "./format";
 import { matchDataset } from "./filter";
@@ -19,7 +19,7 @@ const isFitsPath = (p: string) => /\.(fits?|fits\.gz)$/i.test(p.trim());
 const PROBLEM_SHORT: Record<string, string> = { modified: " · changed on disk", missing: " · missing", not_allowed: " · outside the source folders" };
 
 type Props = {
-  datasets: Dataset[];
+  datasets: DatasetSummary[];
   hosts?: Host[];
   selectedId: number | null;
   problems?: Record<string, Problem>;
@@ -52,7 +52,7 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
   const [showSources, setShowSources] = useState(false);
   // A file that is only the mask file of another dataset (the server says so from the masks' rows) is listed under that dataset's
   // Masks section instead; it stays registered and one click brings it back here. The open dataset is never hidden.
-  const isSource = (d: Dataset) => !d.archived && (d.maskSourceFor?.length ?? 0) > 0 && d.id !== selectedId;
+  const isSource = (d: DatasetSummary) => !d.archived && (d.maskSourceFor?.length ?? 0) > 0 && d.id !== selectedId;
   const matching = datasets.filter((d) => matchDataset(d, q, hosts.find((h) => h.id === d.hostId)?.name));
   const sourceCount = datasets.filter(isSource).length;
   const hiddenSources = showSources ? 0 : matching.filter(isSource).length;
@@ -138,7 +138,7 @@ export function Explorer({ hosts = NO_HOSTS, datasets, selectedId, problems = {}
           );
         }
         const d = datasetById.get(id)!;
-        return <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={rowProps} selected={d.id === selectedId && selectedSubsetId === null} onSelect={() => onSelect(d.id)} trailing={`${access[String(d.id)] === "unreleased" ? "unreleased · " : access[String(d.id)] === "collaboration" ? "collaboration only · " : ""}${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) ? `${d.header.rows.toLocaleString("en-US")} rows · ` : ""}${isHealpix(d) ? `HEALPix ${d.header.nside} · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>;
+        return <TreeRow icon={isCatalog(d) ? Table : Database} rowProps={rowProps} selected={d.id === selectedId && selectedSubsetId === null} onSelect={() => onSelect(d.id)} trailing={`${access[String(d.id)] === "unreleased" ? "unreleased · " : access[String(d.id)] === "collaboration" ? "collaboration only · " : ""}${d.maskSourceFor?.length ? `mask file for ${d.maskSourceFor.map((m) => m.name).join(", ")} · ` : ""}${d.hostId ?`${hosts.find((h) => h.id === d.hostId)?.name ?? "host"} · ` : ""}${isCatalog(d) && d.facts.rows !== null ? `${d.facts.rows.toLocaleString("en-US")} rows · ` : ""}${isHealpix(d) && d.facts.nside !== null ? `HEALPix ${d.facts.nside} · ` : ""}${bytes(d.sizeBytes)}${d.archived ? " · archived" : ""}${PROBLEM_SHORT[problems[String(d.id)] ?? ""] ?? ""}`}>{d.name}</TreeRow>;
       }} />
     </div>
   );

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ImageDataset } from "../api/catalog";
+import type { ImageSummary } from "../api/catalog";
 import { createSubset } from "../api/subsets";
 import type { SubsetView } from "../api/subsets";
 import { Button, Pill } from "../ui";
@@ -13,7 +13,7 @@ import p from "./SubsetPage.module.css";
  * writing anything and written as an ordinary file only when something needs one. Unlike a cutout, it never goes out of date
  * silently: a changed source makes it stale until it is re-pinned.
  */
-export function SubsetsSection({ dataset, subsets, onOpen, onCreated }: { dataset: ImageDataset; subsets: SubsetView[]; onOpen: (id: number) => void; onCreated: (s: SubsetView) => void }) {
+export function SubsetsSection({ dataset, subsets, onOpen, onCreated }: { dataset: ImageSummary; subsets: SubsetView[]; onOpen: (id: number) => void; onCreated: (s: SubsetView) => void }) {
   const [adding, setAdding] = useState(false);
   const mine = subsets.filter((x) => x.sourceId === dataset.id);
   return (

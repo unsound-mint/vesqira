@@ -3,7 +3,7 @@ import { Button, Pill } from "../ui";
 import { formatDuration } from "../ui/duration";
 import { pinJobItem } from "../api/boards";
 import type { Board, JobInfo } from "../api/boards";
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import type { Run } from "../api/runs";
 import { PlaneViewer } from "../viewer/PlaneViewer";
 import { saveViewFigure } from "../viewer/saveFigure";
@@ -67,7 +67,7 @@ export function defaultOutput(run: Run) {
  * a figure and pins it over the job panel. It never pins a reduced preview. A failure is shown with a way to try again;
  * nothing is pinned silently.
  */
-export function LiveResult({ boardId, position, job, run, dataset, onPinned }: { boardId: number; position: number; job: JobInfo; run: Run; dataset: Dataset; onPinned: (b: Board) => void }) {
+export function LiveResult({ boardId, position, job, run, dataset, onPinned }: { boardId: number; position: number; job: JobInfo; run: Run; dataset: DatasetSummary; onPinned: (b: Board) => void }) {
   const v = useViewer(dataset);
   const [drawnFor, setDrawnFor] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);

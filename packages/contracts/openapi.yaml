@@ -9066,9 +9066,79 @@ components:
             - "galactic"
             - "icrs"
           description: "The celestial frame a sky angle is stated in when that is not the grid's own: only a declaration the file's own header made (declaredBy profile:<name>@<version>, or vgt-file-header on older rows) has one, computed from the stored header on read. Null means the grid's own frame, which is what a person's sky declaration always means (ADR 0014 amendment)."
-    Dataset:
+    DatasetFacts:
       type: "object"
-      description: "A registered dataset: a reference to the original file plus header facts. The file itself is never altered."
+      description: "The few header facts every dataset in the list carries instead of the header: read from the stored header of an image or cube, null or false for any other kind. The header itself (GET /api/datasets/{id}) stays the source; these are never edited."
+      required:
+        - "naxis"
+        - "channels"
+        - "width"
+        - "height"
+        - "ctypes"
+        - "bunit"
+        - "bunitStated"
+        - "rows"
+        - "nside"
+        - "numericColumns"
+      properties:
+        naxis:
+          type: "integer"
+          nullable: true
+          description: "Number of image axes the header declares; null for a catalog or a HEALPix map"
+        channels:
+          type: "integer"
+          nullable: true
+          description: "Length of the third axis, 1 for a plane; null for a catalog or a HEALPix map"
+        width:
+          type: "integer"
+          nullable: true
+          description: "Length of the first image axis as declared; null when the header has fewer than two axes, and for a catalog or a HEALPix map"
+        height:
+          type: "integer"
+          nullable: true
+          description: "Length of the second image axis as declared; null when the header has fewer than two axes, and for a catalog or a HEALPix map"
+        ctypes:
+          type: "array"
+          items:
+            type: "string"
+          description: "The CTYPE cards of the first two axes as declared, an empty string where an axis declares none; empty for a catalog or a HEALPix map"
+        bunit:
+          type: "string"
+          nullable: true
+          description: "BUNIT as the file states it; null when it has none (or for a catalog or a HEALPix map)"
+        bunitStated:
+          type: "boolean"
+          description: "True when the file itself states a unit, so nothing can be declared for it"
+        rows:
+          type: "integer"
+          format: "int64"
+          nullable: true
+          description: "A catalog's row count; null for anything else"
+        nside:
+          type: "integer"
+          nullable: true
+          description: "A HEALPix map's NSIDE; null for anything else"
+        numericColumns:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/FactColumn"
+          description: "A catalog's scalar numeric columns (float or int, one value per row) with the unit the file states, in the file's order; empty for anything else"
+    FactColumn:
+      type: "object"
+      description: "A catalog column as the overlay form offers it"
+      required:
+        - "name"
+        - "unit"
+      properties:
+        name:
+          type: "string"
+        unit:
+          type: "string"
+          nullable: true
+          description: "The unit the file states for the column; null when it states none"
+    DatasetSummary:
+      type: "object"
+      description: "A registered dataset as the list shows it: the reference to the original file and what every row of the explorer, the pickers and the boards reads. No header, locations or file-header reading (a catalog's column declaration is small and stays): GET /api/datasets/{id} returns those (Dataset). The file itself is never altered."
       required:
         - "id"
         - "path"
@@ -9076,14 +9146,14 @@ components:
         - "sizeBytes"
         - "modifiedAt"
         - "addedAt"
-        - "header"
         - "hostId"
         - "nature"
         - "interpretation"
         - "unitDeclaration"
         - "kind"
         - "catalogDeclaration"
-        - "locations"
+        - "facts"
+        - "locationCount"
       properties:
         id:
           type: "integer"
@@ -9101,12 +9171,6 @@ components:
         addedAt:
           type: "string"
           format: "date-time"
-        header:
-          oneOf:
-            - $ref: "#/components/schemas/FitsHeader"
-            - $ref: "#/components/schemas/CatalogHeader"
-            - $ref: "#/components/schemas/HealpixHeader"
-          description: "FitsHeader when kind is fits, CatalogHeader when kind is catalog, HealpixHeader when kind is healpix"
         hostId:
           type: "integer"
           format: "int64"
@@ -9140,11 +9204,6 @@ components:
             - $ref: "#/components/schemas/CatalogDeclaration"
           nullable: true
           description: "What the person declared about a catalog's columns; null for anything else"
-        locations:
-          type: "array"
-          items:
-            $ref: "#/components/schemas/DatasetLocation"
-          description: "The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053)."
         corrections:
           allOf:
             - $ref: "#/components/schemas/Corrections"
@@ -9155,11 +9214,36 @@ components:
           items:
             $ref: "#/components/schemas/MaskSourceRef"
           description: "Only on the dataset list: the datasets this file is the imported mask file of, when that is its only role (a file also used for a figure, region, analysis, run, or opened in the viewer has none). Derived from the masks' rows; nothing is hidden or unregistered by it (ADR 0058, mask files)."
-        orientationHeader:
-          allOf:
-            - $ref: "#/components/schemas/OrientationHeader"
-          nullable: true
-          description: "What the file's own header says of its orientation through the tool profile that read it (VGT.jl's PSIFRAME, PSIANGLE, VGTPROD, the VGT* run parameters and the input beam, today), and where the declaration in force disagrees with it; null for a file no profile reads. Computed on read (ADR 0014 amendment, ADR 0068 slice 3). It was also sent as vgtHeader until ADR 0068 slice 6."
+        facts:
+          $ref: "#/components/schemas/DatasetFacts"
+        locationCount:
+          type: "integer"
+          description: "How many files the dataset's bytes are in, the registered one included; the locations themselves are in GET /api/datasets/{id}"
+    Dataset:
+      description: "A registered dataset in full: the summary plus the header facts the worker read from the file when it was registered, where the bytes are, and what the file's own header says of an orientation. The file itself is never altered."
+      allOf:
+        - $ref: "#/components/schemas/DatasetSummary"
+        - type: "object"
+          required:
+            - "header"
+            - "locations"
+          properties:
+            header:
+              oneOf:
+                - $ref: "#/components/schemas/FitsHeader"
+                - $ref: "#/components/schemas/CatalogHeader"
+                - $ref: "#/components/schemas/HealpixHeader"
+              description: "FitsHeader when kind is fits, CatalogHeader when kind is catalog, HealpixHeader when kind is healpix"
+            locations:
+              type: "array"
+              items:
+                $ref: "#/components/schemas/DatasetLocation"
+              description: "The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053)."
+            orientationHeader:
+              allOf:
+                - $ref: "#/components/schemas/OrientationHeader"
+              nullable: true
+              description: "What the file's own header says of its orientation through the tool profile that read it (VGT.jl's PSIFRAME, PSIANGLE, VGTPROD, the VGT* run parameters and the input beam, today), and where the declaration in force disagrees with it; null for a file no profile reads. Computed on read (ADR 0014 amendment, ADR 0068 slice 3). It was also sent as vgtHeader until ADR 0068 slice 6."
     DatasetList:
       type: "object"
       required:
@@ -9168,7 +9252,7 @@ components:
         datasets:
           type: "array"
           items:
-            $ref: "#/components/schemas/Dataset"
+            $ref: "#/components/schemas/DatasetSummary"
     SkyPixel:
       type: "object"
       required:

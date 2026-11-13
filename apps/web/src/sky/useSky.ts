@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../api/http";
 import { getSkyFootprint, getSkyPoint } from "../api/sky";
 import type { SkyFootprint, SkyFrame } from "../api/sky";
-import { isCatalog, isHealpix } from "../api/catalog";
-import type { Dataset } from "../api/catalog";
+import { isCatalog, isHealpix, type DatasetSummary } from "../api/catalog";
 import type { SubsetView } from "../api/subsets";
 import { virtualId } from "../api/planes";
 
@@ -31,11 +30,11 @@ export type SkyItem = {
  */
 type Entry = { id: number; name: string; stamp: string; none: string | null };
 
-const stamp = (d: Dataset) => `${d.id}|${d.modifiedAt}|${JSON.stringify(d.corrections ?? null)}`;
+const stamp = (d: DatasetSummary) => `${d.id}|${d.modifiedAt}|${JSON.stringify(d.corrections ?? null)}`;
 
 const STALE = "the file this subset was defined on has changed, so its window is not drawn until it is re-pinned";
 
-function entriesOf(list: Dataset[], subsets: SubsetView[]): Entry[] {
+function entriesOf(list: DatasetSummary[], subsets: SubsetView[]): Entry[] {
   const out: Entry[] = list.map((d) => ({
     id: d.id,
     name: d.name,
@@ -86,7 +85,7 @@ const fromFootprint = (d: Entry, fp: SkyFootprint): SkyItem => {
  * The footprint of every registered image, in the panel's frame, read a few at a time. A point catalog or HEALPix map has no image
  * grid and is listed as having none. Nothing here depends on the network background: footprints come from the local API only.
  */
-export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true, subsetList: SubsetView[] = NO_SUBSETS) {
+export function useFootprints(all: DatasetSummary[], frame: SkyFrame, enabled = true, subsetList: SubsetView[] = NO_SUBSETS) {
   const list = useMemo(() => all.filter((d) => !d.archived), [all]);
   const shown = useMemo(() => entriesOf(list.slice(0, MAX_FOOTPRINTS), subsetList), [list, subsetList]);
   const key = shown.map((e) => e.stamp).join("\n") + "|" + frame;

@@ -1,4 +1,4 @@
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import { archivedMatches, tokenize, unquote } from "../ui/queryWords";
 import { matchRunQuery } from "./runQuery";
 import { effectiveUnit } from "./unit";
@@ -13,7 +13,7 @@ const words = (q: string) => tokenize(q).map((w) => unquote(w).toLowerCase());
  * and `nature:observed` test that field exactly instead; `unit:none` and `nature:none` match a dataset that declares none
  * (a missing unit is not a unit, and is not matched by any unit value).
  */
-export function matchDataset(d: Dataset, q: string, hostName: string | undefined): boolean {
+export function matchDataset(d: DatasetSummary, q: string, hostName: string | undefined): boolean {
   if (!archivedMatches(d.archived === true, q)) return false;
   const unit = effectiveUnit(d).toLowerCase();
   const host = (hostName ?? "").toLowerCase();

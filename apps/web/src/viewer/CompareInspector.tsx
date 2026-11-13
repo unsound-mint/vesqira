@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "../ui";
 import { tierText } from "../api/tier";
-import type { Dataset, Compat } from "../api/catalog";
+import type { Dataset, DatasetSummary, Compat } from "../api/catalog";
 import type { Run } from "../api/runs";
 import { metricRows, paramDiff } from "../compare/diff";
 import { runAnalysis } from "../api/analysis";
@@ -16,7 +16,7 @@ import s from "./CompareInspector.module.css";
 export { metricRows, paramDiff };
 export type { MetricRow, ParamDiff } from "../compare/diff";
 
-const kind = (d: Dataset) => (d.interpretation ? `axial orientation, ${d.interpretation.unit === "deg" ? "degrees" : "radians"} (${d.interpretation.declaredBy === "user" ? "declared by you" : isFileHeader(d.interpretation.declaredBy) ? "declared by the file" : ruleOf(d.interpretation.declaredBy) !== null ? `declared by your rule ${ruleOf(d.interpretation.declaredBy)}` : (d.interpretation.declaredBy === "vgt-run-adapter" ? "proposed by the run import" : `proposed by ${d.interpretation.declaredBy}`)}; ${tierText(d.interpretation.tier, d.interpretation.mappingVersion, d.interpretation.declaredBy === "user" ? null : d.interpretation.declaredBy)})` : "scalar");
+const kind = (d: DatasetSummary) => (d.interpretation ? `axial orientation, ${d.interpretation.unit === "deg" ? "degrees" : "radians"} (${d.interpretation.declaredBy === "user" ? "declared by you" : isFileHeader(d.interpretation.declaredBy) ? "declared by the file" : ruleOf(d.interpretation.declaredBy) !== null ? `declared by your rule ${ruleOf(d.interpretation.declaredBy)}` : (d.interpretation.declaredBy === "vgt-run-adapter" ? "proposed by the run import" : `proposed by ${d.interpretation.declaredBy}`)}; ${tierText(d.interpretation.tier, d.interpretation.mappingVersion, d.interpretation.declaredBy === "user" ? null : d.interpretation.declaredBy)})` : "scalar");
 const commit = (r: Run | undefined) => (r ? (r.gitCommit ? r.gitCommit.slice(0, 12) + (r.dirty ? " -dirty (not reproducible)" : "") : "no commit recorded") : "not from an imported run");
 
 /** What differs between two maps, and the explicit next steps (axial difference, alignment). Nothing is merged silently. */
@@ -26,7 +26,7 @@ function unitCell(view: { bunit: string | null; bunit_status: string } | null | 
   return view.bunit_status === "user" ? `${view.bunit} (declared by you)` : view.bunit_status === "corrected" ? `${view.bunit} (corrected by you)` : view.bunit;
 }
 
-export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a: Dataset; b: Dataset; va: Viewer; vb: Viewer; runs: Run[]; compat: Compat | null; onCreated: (d: Dataset) => void }) {
+export function CompareInspector({ a, b, va, vb, runs, compat, onCreated }: { a: Dataset; b: Dataset; va: Viewer; vb: Viewer; runs: Run[]; compat: Compat | null; onCreated: (d: DatasetSummary) => void }) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const ra = runFor(runs, a.id)?.run;

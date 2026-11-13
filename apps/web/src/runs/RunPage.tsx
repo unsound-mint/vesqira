@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import type { Job } from "../api/jobs";
 import { jobLog } from "../api/jobs";
 import { metricText } from "../api/metrics";
@@ -24,7 +24,7 @@ import { PushButton } from "../push/PushButton";
 export function RunPage({ run: listed, runs, datasets, job, onBack, onOpenRun, onOpenInViewer, onCompareInViewer, onRunAgain, onDraftedOnCube, onEntryChanged }: {
   run: Run;
   runs: Run[];
-  datasets: Dataset[];
+  datasets: DatasetSummary[];
   job: Job | null;
   onBack: () => void;
   onOpenRun: (id: number) => void;

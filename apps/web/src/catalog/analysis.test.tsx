@@ -3,8 +3,9 @@ import userEvent from "@testing-library/user-event";
 import type { Dataset, Header, ImageDataset } from "../api/catalog";
 import { AnalysisPanel, StatsView } from "./AnalysisPanel";
 import type { StatsSummary } from "../api/analysis";
+import { withFacts } from "./testDatasets";
 
-const ds = (id: number, name: string, hostId = 0): ImageDataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, header: {} as Header });
+const ds = (id: number, name: string, hostId = 0): ImageDataset => withFacts({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, header: {} as Header });
 const cube = ds(1, "cube.fits");
 
 function mockFetch(routes: Record<string, (init?: RequestInit) => { status?: number; body: unknown }>) {

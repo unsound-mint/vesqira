@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Input, Section, Select } from "../ui";
 import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import { newRequestId } from "../api/http";
-import { isImage } from "../api/catalog";
-import type { Dataset, HealpixDataset } from "../api/catalog";
+import { isImage, type DatasetSummary } from "../api/catalog";
+import type { HealpixDataset } from "../api/catalog";
 import { getDerived, runHealpixSample } from "../api/analysis";
 import type { Derived, HealpixSampleRequest, HealpixSampleResult } from "../api/analysis";
 import s from "./AnalysisPanel.module.css";
@@ -15,10 +15,10 @@ const CELESTIAL_AXIS = /^(RA|DEC|[A-Z]LON|[A-Z]LAT)(-|$)/i;
 
 /** Why a dataset cannot receive a HEALPix map, or null when it can. Only what the header shows: the server decides again (a
     WCS correction, a missing projection) and its sentence is shown as it is. */
-export function targetReason(d: Dataset): string | null {
+export function targetReason(d: DatasetSummary): string | null {
   if (!isImage(d)) return "it has no pixel grid";
   if (d.hostId !== 0) return "it lives on a host, and sampling runs on this computer only: download it with Transfers";
-  const types = d.header.axes.slice(0, 2).map((a) => a.ctype ?? "");
+  const types = d.facts.ctypes;
   if (types.length < 2 || !types.every((t) => CELESTIAL_AXIS.test(t))) return "its first two axes are not a celestial pair, so it has no sky grid";
   return null;
 }
@@ -40,7 +40,7 @@ const METHODS = [
   { id: "gaussian", label: "Gaussian smoothing" },
 ] as const;
 
-export function HealpixSamplePanel({ dataset, datasets, onResult }: { dataset: HealpixDataset; datasets: Dataset[]; onResult: (r: HealpixSampleResult) => void }) {
+export function HealpixSamplePanel({ dataset, datasets, onResult }: { dataset: HealpixDataset; datasets: DatasetSummary[]; onResult: (r: HealpixSampleResult) => void }) {
   const h = dataset.header;
   const [target, setTarget] = useState("");
   const [product, setProduct] = useState<HealpixSampleRequest["product"]>("b_field");
@@ -128,7 +128,7 @@ export function HealpixSamplePanel({ dataset, datasets, onResult }: { dataset: H
 
 /** The inspector section of a map made by a HEALPix sampling: how it was derived and links to its P and σ_P maps, read from the map's
     own derived record, so it is there whenever the map is opened. Renders nothing for any other dataset. */
-export function HealpixSampleDone({ dataset, datasets, onOpen }: { dataset: Dataset; datasets: Dataset[]; onOpen: (d: Dataset) => void }) {
+export function HealpixSampleDone({ dataset, datasets, onOpen }: { dataset: DatasetSummary; datasets: DatasetSummary[]; onOpen: (d: DatasetSummary) => void }) {
   const [rec, setRec] = useState<Derived | null>(null);
   useEffect(() => {
     setRec(null);

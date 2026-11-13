@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import type { Job } from "../api/jobs";
 import { createRerunOnInput, previewRerunOnInput } from "../api/runs";
 import type { InputRerunRecord, Run, RerunOnInputSummary } from "../api/runs";
@@ -63,7 +63,7 @@ export function RerunSummary({ summary }: { summary: RerunOnInputSummary }) {
  * would be carried over and what changes, or why it refuses (a setting that does not fit the cube, no kept settings). Creating
  * the draft submits nothing: the script is read and submitted on the Jobs screen.
  */
-export function RerunOnCube({ run, job, datasets, onDrafted }: { run: Run; job: Job; datasets: Dataset[]; onDrafted: (job: Job) => void }) {
+export function RerunOnCube({ run, job, datasets, onDrafted }: { run: Run; job: Job; datasets: DatasetSummary[]; onDrafted: (job: Job) => void }) {
   const candidates = useMemo(
     () => datasets.filter((d) => d.kind !== "catalog" && d.archived !== true && d.hostId === job.hostId && d.id !== run.inputHint?.datasetId),
     [datasets, job.hostId, run.inputHint?.datasetId],

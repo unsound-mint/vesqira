@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { copyDataset } from "../api/catalog";
-import type { Dataset } from "../api/catalog";
+import { copyDataset, type DatasetSummary } from "../api/catalog";
 import { Button } from "../ui";
 import { bytes } from "./format";
 import s from "./AnalysisPanel.module.css";
 
 /** Reference (the default) versus a managed copy. A copy is byte for byte, read-only and identified by its hash. */
-export function StorageControl({ dataset, onCopied }: { dataset: Dataset; onCopied: (d: Dataset) => void }) {
+export function StorageControl({ dataset, onCopied }: { dataset: DatasetSummary; onCopied: (d: DatasetSummary) => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sha, setSha] = useState<string | null>(null);

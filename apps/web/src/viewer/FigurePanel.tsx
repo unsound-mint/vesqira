@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Checkbox, Input, Select } from "../ui";
 import { compassNote, usableCompass } from "../ui/Compass";
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import { createBoard, listBoards } from "../api/boards";
 import { addFigure } from "../undo/boardCommands";
 import type { Board, Figure } from "../api/boards";
@@ -13,7 +13,7 @@ import { ShareFigureButton } from "../boards/ShareFigureButton";
 import s from "./FigurePanel.module.css";
 
 /** Saves what is on screen as a figure that keeps its source, parameters and provenance (pinned evidence). */
-export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: Dataset; datasets?: Dataset[] }) {
+export function FigurePanel({ v, dataset, datasets }: { v: Viewer; dataset: DatasetSummary; datasets?: DatasetSummary[] }) {
   const [kind, setKind] = useState<"plane" | "spectrum">("plane");
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");

@@ -838,10 +838,10 @@ func TestAFileThatIsAnotherDatasetsLocationIsNotRegisteredAsASecondDataset(t *te
 	if code, _, raw := e.register(copyPath, true); code != 409 || !strings.Contains(string(raw), "already another location of a dataset") {
 		t.Fatalf("registering a location as a dataset: %d %s", code, raw)
 	}
-	var list struct{ Datasets []catalog.Dataset }
+	var list struct{ Datasets []catalog.Summary }
 	_, lb := e.call("GET", "/api/datasets", nil)
 	json.Unmarshal(lb, &list)
-	if len(list.Datasets) != 1 || len(list.Datasets[0].Locations) != 2 {
+	if len(list.Datasets) != 1 || list.Datasets[0].LocationCount != 2 {
 		t.Fatalf("the refusal must change nothing: %+v", list.Datasets)
 	}
 }

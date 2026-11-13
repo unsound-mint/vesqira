@@ -1,6 +1,7 @@
 import { matchDataset, matchRun } from "./filter";
 import type { Dataset } from "../api/catalog";
 import type { Run } from "../api/runs";
+import { withFacts } from "./testDatasets";
 
 const run = (params: Record<string, string>, over: Partial<Run> = {}): Run =>
   ({ id: 1, name: "lmc_ker8", kind: "vgt", gitCommit: "abc123", inputName: "hnv1.fits", params: Object.entries(params).map(([key, value]) => ({ key, value, source: "config" })), metrics: [], review: { qc: "not_assessed", interpretation: "not_interpreted", note: "" }, ...over }) as Run;
@@ -50,7 +51,7 @@ describe("run filter on declared results", () => {
 });
 
 describe("dataset filter", () => {
-  const d = { name: "hi_cube.fits", nature: "observed", header: { bunit: "K" } } as unknown as Dataset;
+  const d = withFacts({ name: "hi_cube.fits", nature: "observed", header: { bunit: "K" } }) as unknown as Dataset;
   it("looks in name, unit, nature and host", () => {
     expect(matchDataset(d, "hi", undefined)).toBe(true);
     expect(matchDataset(d, "observed K", undefined)).toBe(true);
@@ -60,9 +61,9 @@ describe("dataset filter", () => {
 });
 
 describe("dataset filter on declared fields", () => {
-  const mk = (bunit: string | null, nature = "") => ({ name: "x.fits", nature, header: { bunit } }) as unknown as Dataset;
+  const mk = (bunit: string | null, nature = "") => withFacts({ name: "x.fits", nature, header: { bunit } }) as unknown as Dataset;
   it("a unit you declared for a file without BUNIT is found like any other, and the file's own wins", () => {
-    const declared = (bunit: string | null, unit: string) => ({ name: "x.fits", nature: "", header: { bunit }, unitDeclaration: { unit } }) as unknown as Dataset;
+    const declared = (bunit: string | null, unit: string) => withFacts({ name: "x.fits", nature: "", header: { bunit }, unitDeclaration: { unit } }) as unknown as Dataset;
     expect(matchDataset(declared(null, "Jy/beam"), "unit:jy/beam", undefined)).toBe(true);
     expect(matchDataset(declared(null, "Jy/beam"), "unit:none", undefined)).toBe(false);
     expect(matchDataset(declared("K", "Jy/beam"), "unit:K", undefined)).toBe(true);

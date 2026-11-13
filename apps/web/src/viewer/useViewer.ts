@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ApiError } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import { usesOf } from "../catalog/MaskPolicies";
 import type { PolicyChoice } from "../catalog/MaskPolicies";
 import { useMasks } from "./useMasks";
@@ -7,7 +8,6 @@ import { expandPreview, getAxial, isVirtualId, getConversions, getConvert, getCo
 import { isOfflineMissing, setOfflineMissing } from "../api/offlineState";
 import { newRequestId } from "../api/http";
 import type { AxialStats, Conversions, Converted, Coord, LineShape, Plane, RegionShape, Spectrum, View } from "../api/planes";
-import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
 import { channelForKey } from "./geometry";
 import { useSavedRegions } from "./useSavedRegions";
@@ -36,7 +36,7 @@ const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.mes
  * serialisable actions. Everything else here is ephemeral: pointer, pinned pixel, tool, server replies, loading and errors.
  * The setters are thin wrappers over dispatch, so the panels read as before.
  */
-export function useViewer(dataset: Dataset | null) {
+export function useViewer(dataset: DatasetSummary | null) {
   const datasetId = dataset?.id ?? null;
   // A virtual subset (ADR 0063) is read through its window by the view, plane, coordinate and spectrum routes and by nothing else:
   // masks, saved regions, conversions, orientation statistics, a paired reliability map and overlays are the file's, not the window's.

@@ -13,6 +13,7 @@ import type { Mark } from "./overlays";
 import { OVERLAY_COLORS } from "./palette";
 import { DEFAULT_DISPLAY, newScene, sceneReducer } from "./scene";
 import type { Scene, SceneOverlay } from "./scene";
+import { withFacts } from "../catalog/testDatasets";
 
 const W = 40;
 const H = 30;
@@ -155,7 +156,7 @@ describe("the catalog overlay form", () => {
   const col = (name: string, dtype = "float", scalar = true, unit: string | null = null) => ({ name, dtype, scalar, unit });
   const decl = (over: Record<string, unknown> = {}) => ({ lon: "RA", lat: "DEC", format: "degrees", frame: "icrs", equinox: null, angle: { column: "PA", unit: "deg", frame: "sky", quantity: "starlight_polarization", sigmaColumn: null }, values: [], declaredBy: "user", declaredAt: "2026-11-11T00:00:00Z", stale: false, ...over });
   const catalogDs = (id: number, over: Record<string, unknown> = {}) =>
-    ({ id, name: `c${id}.tsv`, kind: "catalog", header: { kind: "catalog", format: "tsv", rows: 4, columns: [col("RA"), col("DEC"), col("PA"), col("P(%)", "float", true, "%"), col("sP(%)"), col("Star", "string"), col("arr", "other", false)] }, catalogDeclaration: decl(), interpretation: null, unitDeclaration: null, ...over }) as unknown as Dataset;
+    withFacts({ id, name: `c${id}.tsv`, kind: "catalog", header: { kind: "catalog", format: "tsv", rows: 4, columns: [col("RA"), col("DEC"), col("PA"), col("P(%)", "float", true, "%"), col("sP(%)"), col("Star", "string"), col("arr", "other", false)] }, catalogDeclaration: decl(), interpretation: null, unitDeclaration: null, ...over }) as unknown as Dataset;
   const datasets = [catalogDs(7), catalogDs(8, { catalogDeclaration: null }), catalogDs(9, { catalogDeclaration: decl({ stale: true }) }), catalogDs(10, { catalogDeclaration: decl({ angle: { column: "PA", unit: "deg", frame: "sky", quantity: null, sigmaColumn: null } }) })];
   const draft = (over: Record<string, unknown> = {}) => ({ ...emptyDraft("catalog", 7), ...over });
   const make = (over: Record<string, unknown> = {}, id = 7) => draftToOverlay(draft({ datasetId: id, ...over }) as ReturnType<typeof emptyDraft>, "catalog-1", true, datasets, 1);

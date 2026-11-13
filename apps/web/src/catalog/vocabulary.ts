@@ -1,4 +1,4 @@
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import type { Run } from "../api/runs";
 import type { Vocabulary, VocabKey } from "../ui/FilterBox";
 import { effectiveUnit } from "./unit";
@@ -111,7 +111,7 @@ export function runVocabulary(runs: Run[], ctxOf?: (r: Run) => RunContext): Voca
 }
 
 /** What can be asked of a list of datasets: units as declared (and "no unit declared"), hosts and natures that occur. */
-export function datasetVocabulary(datasets: Dataset[], hosts: { id: number; name: string }[]): Vocabulary {
+export function datasetVocabulary(datasets: DatasetSummary[], hosts: { id: number; name: string }[]): Vocabulary {
   const unit: Tally = new Map();
   const host: Tally = new Map();
   const nature: Tally = new Map();

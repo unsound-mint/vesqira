@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { ruleOf } from "../api/declared";
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import { Button, Input } from "../ui";
 import { TierBadge } from "../ui/TierBadge";
 import { fileStatesItsUnit } from "./unit";
@@ -12,7 +12,7 @@ import s from "./AnalysisPanel.module.css";
  * file's, and it does not change the file. Withdrawing it brings back "unresolved".
  */
 export function UnitControl({ dataset, onDeclare, onWithdraw }: {
-  dataset: Dataset;
+  dataset: DatasetSummary;
   onDeclare: (id: number, unit: string) => Promise<string | null>;
   onWithdraw: (id: number) => Promise<string | null>;
 }) {

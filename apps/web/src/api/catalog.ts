@@ -22,6 +22,9 @@ export type LocationList = Schemas["LocationList"];
 export type NewerNotice = Schemas["NewerNotice"];
 export type NewerResults = Pick<Schemas["NewerResults"], "datasets" | "figures">;
 export type SameContentMatch = Schemas["SameContentMatch"];
+/** A dataset as the list sends it: no header, locations or file-header reading, only what rows, pickers and filters read (`facts` has the few header facts they need). A component that needs the header takes `Dataset`, which `getDataset` returns. `kind` is optional so that a dataset built without it (tests, older answers) is an image, as before. */
+export type DatasetSummary = Omit<Schemas["DatasetSummary"], "kind" | "catalogDeclaration"> & { kind?: Schemas["DatasetSummary"]["kind"]; catalogDeclaration?: CatalogDeclaration | null; archived?: boolean };
+export type DatasetFacts = Schemas["DatasetFacts"];
 /** `locations` is optional here so that a dataset built without it (tests, older answers) is one with only its registered file. */
 type DatasetBase = Omit<Schemas["Dataset"], "header" | "kind" | "catalogDeclaration" | "locations"> & { locations?: DatasetLocation[] };
 /** An image or cube. `kind` is optional so that a dataset built without it (tests, older answers) is an image, as before. */
@@ -33,16 +36,28 @@ export type HealpixHeader = Schemas["HealpixHeader"];
 export type HealpixDataset = DatasetBase & { kind: "healpix"; header: HealpixHeader; catalogDeclaration?: null };
 /** `archived` is set by the server on every dataset it sends (ADR 0041); the generated type predates it. Narrow on `kind`. */
 export type Dataset = (ImageDataset | CatalogDataset | HealpixDataset) & { archived?: boolean };
-export const isCatalog = (d: Dataset): d is CatalogDataset & { archived?: boolean } => d.kind === "catalog";
-export const isHealpix = (d: Dataset): d is HealpixDataset & { archived?: boolean } => d.kind === "healpix";
+/** What a list row of each kind is. Narrow a `DatasetSummary` with the guards below, then ask `getDataset` when the header is needed. */
+export type ImageSummary = DatasetSummary & { kind?: "fits" };
+export type CatalogSummary = DatasetSummary & { kind: "catalog"; catalogDeclaration: CatalogDeclaration | null };
+export type HealpixSummary = DatasetSummary & { kind: "healpix" };
+export function isCatalog(d: Dataset): d is CatalogDataset & { archived?: boolean };
+export function isCatalog(d: DatasetSummary): d is CatalogSummary;
+export function isCatalog(d: DatasetSummary): boolean { return d.kind === "catalog"; }
+export function isHealpix(d: Dataset): d is HealpixDataset & { archived?: boolean };
+export function isHealpix(d: DatasetSummary): d is HealpixSummary;
+export function isHealpix(d: DatasetSummary): boolean { return d.kind === "healpix"; }
 /** An image or cube: the only kind with planes and a pixel grid. */
-export const isImage = (d: Dataset): d is ImageDataset & { archived?: boolean } => d.kind !== "catalog" && d.kind !== "healpix";
+export function isImage(d: Dataset): d is ImageDataset & { archived?: boolean };
+export function isImage(d: DatasetSummary): d is ImageSummary;
+export function isImage(d: DatasetSummary): boolean { return d.kind !== "catalog" && d.kind !== "healpix"; }
 
 /** Files on this computer that are no longer what was registered. Remote files are not checked here. */
 export type Problem = "modified" | "missing" | "not_allowed";
 export const getAvailability = () => call<{ problems: Record<string, Problem> }>("/api/datasets/availability").then((r) => r.problems ?? {});
 /** Without `archived` the server hides archived datasets; "all" is for the explorer, which filters them itself. */
-export const listDatasets = (opts: { archived?: "all" | "only" } = {}) => call<{ datasets: Dataset[] }>(`/api/datasets${opts.archived ? `?archived=${opts.archived}` : ""}`).then((r) => r.datasets);
+export const listDatasets = (opts: { archived?: "all" | "only" } = {}) => call<{ datasets: DatasetSummary[] }>(`/api/datasets${opts.archived ? `?archived=${opts.archived}` : ""}`).then((r) => r.datasets);
+/** One dataset with its header, locations and file-header reading: what the list leaves out. */
+export const getDataset = (id: number, signal?: AbortSignal) => call<Dataset>(`/api/datasets/${id}`, { signal });
 export const headerCards = (id: number) => call<{ cards: string[]; truncated: boolean }>(`/api/datasets/${id}/header-cards`);
 export const listRoots = () => call<{ roots: string[] }>("/api/roots").then((r) => r.roots);
 /** `asNew` registers the file as its own dataset although a dataset already holds probably or verifiably the same content. */

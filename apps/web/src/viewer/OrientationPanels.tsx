@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Basis, BasisNote, Button, Select } from "../ui";
 import { TierBadge } from "../ui/TierBadge";
-import { isImage } from "../api/catalog";
+import { isImage, type DatasetSummary } from "../api/catalog";
 import { ruleOf } from "../api/declared";
-import type { Dataset, ImageDataset } from "../api/catalog";
+import type { Dataset } from "../api/catalog";
 import type { AngleFrame, AngleQuantity, InterpretationRequest } from "../api/catalog";
 import type { AxialSummary } from "../api/planes";
 import type { Viewer } from "./useViewer";
@@ -44,21 +44,21 @@ const QUANTITY_LABEL: Record<AngleQuantity, string> = {
 };
 
 /** A reliability candidate suggested by file name only: the user confirms it, and the server checks the grid. */
-export function suggestCompanion(name: string, others: Dataset[]): Dataset | null {
+export function suggestCompanion(name: string, others: DatasetSummary[]): DatasetSummary | null {
   if (/reliability/i.test(name)) return null;
   return others.find((d) => /reliability/i.test(d.name) && d.name.replace(/reliability[_-]?/i, "") === name) ?? null;
 }
 
 /** Rows and columns of a single-plane map, or null when it is a cube or not an image. */
-const planeSize = (d: Dataset): string | null => {
+const planeSize = (d: DatasetSummary): string | null => {
   if (!isImage(d)) return null;
-  const a = (d as ImageDataset).header?.axes ?? [];
-  if (a.length > 2 && (a[2]?.length ?? 1) > 1) return null;
-  return a.length >= 2 ? `${a[0]!.length}×${a[1]!.length}` : null;
+  const { channels, width, height } = d.facts;
+  if ((channels ?? 1) > 1) return null;
+  return width !== null && height !== null ? `${width}×${height}` : null;
 };
 
 /** The folder (and host, when not this computer) a dataset lives in: what tells two files of the same name apart. */
-export function whereText(d: Dataset): string {
+export function whereText(d: DatasetSummary): string {
   const parts = d.path.split("/");
   const folder = parts.length > 1 ? `…/${parts.slice(-2, -1)[0]}` : "";
   return `${d.hostId !== 0 ? `host ${d.hostId}, ` : ""}${folder}`.replace(/, $/, "");
@@ -69,7 +69,7 @@ export function whereText(d: Dataset): string {
  * (the server checks the sky grid itself; the size is what the catalog knows). The choice already declared stays listed even
  * when it no longer fits, so opening the form never silently drops it. A name two datasets share gets its folder (and host).
  */
-export function reliabilityChoices(self: Dataset, all: Dataset[], currentId: number | null): { id: number; label: string }[] {
+export function reliabilityChoices(self: DatasetSummary, all: DatasetSummary[], currentId: number | null): { id: number; label: string }[] {
   const size = planeSize(self);
   const fits = all.filter((d) => d.id !== self.id && !d.archived && isImage(d) && (d.id === currentId || (size !== null && planeSize(d) === size && d.hostId === self.hostId)));
   const count = new Map<string, number>();
@@ -78,7 +78,7 @@ export function reliabilityChoices(self: Dataset, all: Dataset[], currentId: num
 }
 
 /** What the user says this single-plane map is. Declared by the user, stored in the catalog, never written to the file. */
-export function InterpretationPanel({ v, dataset, datasets, declare }: { v: Viewer; dataset: Dataset; datasets: Dataset[]; declare: (id: number, b: InterpretationRequest) => Promise<string | null> }) {
+export function InterpretationPanel({ v, dataset, datasets, declare }: { v: Viewer; dataset: Dataset; datasets: DatasetSummary[]; declare: (id: number, b: InterpretationRequest) => Promise<string | null> }) {
   const cur = dataset.interpretation;
   const [kind, setKind] = useState<"scalar" | "axial">(cur ? "axial" : "scalar");
   const [unit, setUnit] = useState<"" | "deg" | "rad">(cur?.unit ?? "");

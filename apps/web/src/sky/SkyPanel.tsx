@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Crosshair, Download, ImagePlus, Minus, Plus, Scan } from "lucide-react";
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import type { SubsetView } from "../api/subsets";
 import type { SkyFrame } from "../api/sky";
 import { Button, IconButton, Select } from "../ui";
@@ -36,7 +36,7 @@ function itemNote(it: SkyItem): string {
  * frame. The survey image is context only: it is labelled as such, is not sampled into any number and is off by default.
  */
 export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
-  datasets: Dataset[];
+  datasets: DatasetSummary[];
   /** The virtual subsets (ADR 0063): each is drawn as its own window, computed by the worker from its source's WCS. */
   subsets?: SubsetView[];
   /** The viewer's id of what is open: a dataset's id, the negative of a subset's id, or null. */

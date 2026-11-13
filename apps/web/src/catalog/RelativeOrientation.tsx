@@ -2,8 +2,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Basis, Button, Input, More, Section, Select } from "../ui";
 import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import { newRequestId } from "../api/http";
-import { ApiError, isCatalog, isImage } from "../api/catalog";
-import type { Dataset } from "../api/catalog";
+import { ApiError, isCatalog, isImage, type DatasetSummary } from "../api/catalog";
 import { getDerived, getRelativeOrientationPresets, relativeOrientationTableUrl, runRelativeOrientation } from "../api/analysis";
 import type { RelOrientParams, RelOrientPreset, RelOrientPresets, RelOrientSummary } from "../api/analysis";
 import type { Controls } from "../api/runs";
@@ -47,7 +46,7 @@ export function proposeSnrColumns(values: string[]): { p: string; sigma: string 
 }
 
 /** What is still missing before a dataset can enter a comparison, or null when it can. */
-export function notReady(d: Dataset): string | null {
+export function notReady(d: DatasetSummary): string | null {
   if (d.hostId !== 0) return "it lives on a host, and relative orientation is computed on this computer only: download it with Transfers and compare the copy";
   if (isCatalog(d)) {
     const c = d.catalogDeclaration;
@@ -74,7 +73,7 @@ export function bootstrapNote(range: readonly number[], used: number, resamples?
 const fmt = (v: number | null | undefined, digits = 3) => (v === null || v === undefined || !Number.isFinite(v) ? EM : v.toFixed(digits));
 
 /** "Compare orientation with…": from an orientation map (with a catalog or another map) or from a catalog (with a map). */
-export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dataset: Dataset; datasets: Dataset[]; onCreated: (d: Dataset) => void }) {
+export function RelativeOrientationPanel({ dataset, datasets, onCreated }: { dataset: DatasetSummary; datasets: DatasetSummary[]; onCreated: (d: DatasetSummary) => void }) {
   const [other, setOther] = useState("");
   const [v, setV] = useState<Record<string, string>>({});
   // the presets come from the API; a field shows what the chosen preset holds until the person types another value
@@ -286,7 +285,7 @@ function PresetChooser({ presets, active, catalogMode, onChoose }: { presets: Re
 
 /** The result of a relative-orientation comparison, from the dataset's derived record, in its own inspector section. Renders nothing for
     other datasets. */
-export function RelativeOrientationResult({ dataset, datasets }: { dataset: Dataset; datasets: Dataset[] }) {
+export function RelativeOrientationResult({ dataset, datasets }: { dataset: DatasetSummary; datasets: DatasetSummary[] }) {
   const [rec, setRec] = useState<{ op: string; sources: number[]; summary: RelOrientSummary; controls: Controls | null } | null>(null);
   useEffect(() => {
     setRec(null);

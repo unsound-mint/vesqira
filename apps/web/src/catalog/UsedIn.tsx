@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { listBoards, listFigures } from "../api/boards";
 import type { Board, Figure } from "../api/boards";
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import { Button } from "../ui";
 import s from "./AnalysisPanel.module.css";
 
 /** Where a dataset is used: its figures and the boards that hold them, so files, runs and boards link both ways. */
-export function UsedIn({ dataset, onOpenBoards }: { dataset: Dataset; onOpenBoards: () => void }) {
+export function UsedIn({ dataset, onOpenBoards }: { dataset: DatasetSummary; onOpenBoards: () => void }) {
   const [figs, setFigs] = useState<Figure[]>([]);
   const [boards, setBoards] = useState<Board[]>([]);
   useEffect(() => {

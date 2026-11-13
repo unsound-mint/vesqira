@@ -4,8 +4,9 @@ import { vi } from "vitest";
 import type { Dataset } from "../api/catalog";
 import { MasksPanel } from "./MasksPanel";
 import { UnitControl } from "./UnitControl";
+import { withFacts } from "./testDatasets";
 
-const ds = { id: 7, name: "a.fits", path: "/d/a.fits", hostId: 0, kind: "fits", header: { bunit: null, bunit_status: "unresolved" }, interpretation: null, unitDeclaration: null } as unknown as Dataset;
+const ds = withFacts({ id: 7, name: "a.fits", path: "/d/a.fits", hostId: 0, kind: "fits", header: { bunit: null, bunit_status: "unresolved" }, interpretation: null, unitDeclaration: null }) as unknown as Dataset;
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -54,7 +55,7 @@ describe("making a mask", () => {
 
 describe("tiers in the unit control", () => {
   it("shows a unit a rule proposed as inferred, with the rule and its mapping version", () => {
-    const d = { ...ds, unitDeclaration: { unit: "K km/s", declaredBy: "rohsa-run-adapter", declaredAt: "2026-11-10T10:00:00Z", stale: false, tier: "inferred", mappingVersion: "1" } } as unknown as Dataset;
+    const d = withFacts({ ...ds, unitDeclaration: { unit: "K km/s", declaredBy: "rohsa-run-adapter", declaredAt: "2026-11-10T10:00:00Z", stale: false, tier: "inferred", mappingVersion: "1" } }) as unknown as Dataset;
     render(<UnitControl dataset={d} onDeclare={vi.fn()} onWithdraw={vi.fn()} />);
     expect(screen.getByText("inferred by rohsa-run-adapter/1")).toBeInTheDocument();
   });

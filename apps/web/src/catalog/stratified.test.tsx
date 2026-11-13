@@ -1,15 +1,16 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Dataset, Header, ImageDataset, Interpretation } from "../api/catalog";
+import type { Dataset, DatasetSummary, Header, ImageDataset, Interpretation } from "../api/catalog";
 import type { RelOrientSummary } from "../api/analysis";
 import { RelativeOrientationPanel, RelOrientView } from "./RelativeOrientation";
 import { PRESETS } from "./presetsFixture";
 import { parseEdges, plotRange, strataCsv } from "./StratifiedOrientation";
+import { withFacts } from "./testDatasets";
 
 const interp = (over: Partial<Interpretation> = {}): Interpretation =>
   ({ kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: "pixel", quantity: "b_field", declaredBy: "user", declaredAt: "", stale: false, ...over }) as Interpretation;
 const map = (id: number, name: string, i: Interpretation | null = interp(), over: Partial<ImageDataset> = {}): ImageDataset =>
-  ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: i, nature: "", unitDeclaration: null, hostId: 0, header: {} as Header, ...over });
+  withFacts({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: i, nature: "", unitDeclaration: null, hostId: 0, header: {} as Header, ...over });
 
 type Sum = RelOrientSummary;
 const strata = (): NonNullable<Sum["stratified"]> => ({
@@ -149,7 +150,7 @@ describe("stratified relative orientation: the request", () => {
     }));
     const psi = map(1, "psi.fits");
     const ds: Dataset[] = [psi, map(2, "planck.fits"), map(3, "nhi.fits", null), map(4, "remote.fits", null, { hostId: 5 }), map(5, "other_orientation.fits"), map(6, "gone.fits", null, { archived: true } as Partial<ImageDataset>)];
-    const created: Dataset[] = [];
+    const created: DatasetSummary[] = [];
     render(<RelativeOrientationPanel dataset={psi} datasets={ds} onCreated={(d) => created.push(d)} />);
     expect(screen.queryByLabelText("Bin by a third map (optional)")).toBeNull();                // nothing chosen yet
     await userEvent.selectOptions(screen.getByLabelText("Compare orientation with"), "2");

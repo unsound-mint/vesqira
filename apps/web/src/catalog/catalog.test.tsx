@@ -4,10 +4,11 @@ import { DatasetInspector } from "./DatasetInspector";
 import { Explorer } from "./Explorer";
 import { bytes, show } from "./format";
 import type { ImageDataset } from "../api/catalog";
+import { withFacts } from "./testDatasets";
 
 const unresolved = { crval: null, crval_status: "unresolved", crpix: null, crpix_status: "unresolved", cdelt: null, cdelt_status: "unresolved", cunit: null, cunit_status: "unresolved" } as const;
 
-const ds: ImageDataset = {
+const ds: ImageDataset = withFacts({
   interpretation: null,
   nature: "", unitDeclaration: null,
   hostId: 0,
@@ -19,7 +20,7 @@ const ds: ImageDataset = {
       { axis: 3, length: 64, ctype: "VRAD", ctype_status: "declared", ...unresolved },
     ],
   },
-};
+});
 
 describe("format", () => {
   it("never turns unknown into zero", () => {
@@ -107,7 +108,7 @@ describe("raw header cards", () => {
 });
 
 describe("files that changed on disk", () => {
-  const d = { id: 7, name: "cube.fits", path: "/data/cube.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", unitDeclaration: null, interpretation: null, header: { ok: true, naxis: 3, bitpix: -32, axes: [] } } as unknown as ImageDataset;
+  const d = withFacts({ id: 7, name: "cube.fits", path: "/data/cube.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", unitDeclaration: null, interpretation: null, header: { ok: true, naxis: 3, bitpix: -32, axes: [] } }) as unknown as ImageDataset;
   it("says so in the list and the inspector, and offers to read the file again only when it changed", async () => {
     const reread = vi.fn();
     render(<Explorer datasets={[d]} selectedId={7} problems={{ "7": "modified" }} loading={false} error={null} onSelect={() => {}} onRegister={async () => null} />);

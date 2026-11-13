@@ -7,8 +7,9 @@ import type { Derived } from "../api/analysis";
 import { AnalysisPanel, DerivedPanel } from "./AnalysisPanel";
 import { carryChoices, carryUndecided } from "./MaskCarry";
 import { masksChanged } from "../viewer/useMasks";
+import { withFacts } from "./testDatasets";
 
-const ds = (id: number, name: string, hostId = 0): ImageDataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, header: {} as Header });
+const ds = (id: number, name: string, hostId = 0): ImageDataset => withFacts({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, header: {} as Header });
 const cube = ds(1, "cube.fits");
 const mask = (over: Partial<Mask>): Mask => ({
   id: 1, datasetId: 1, hostId: 0, type: "saturated", name: "Bright", width: 4, height: 3, channels: 0, flagged: 2, total: 12, tier: "declared", mappingVersion: "", method: "computed",

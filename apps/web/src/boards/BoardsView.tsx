@@ -15,11 +15,10 @@ import { accessRefusal } from "../api/access";
 import type { AccessRefusal } from "../api/access";
 import { PreflightRound, RoundChangesList } from "./RoundHistory";
 import type { Board, Comment, Figure, FigureItem, Preflight, Snapshot } from "../api/boards";
-import type { NewerNotice } from "../api/catalog";
+import type { NewerNotice, DatasetSummary } from "../api/catalog";
 import { NewerNotices } from "../catalog/NewerNotices";
 import { FigureRedraw } from "./FigureRedraw";
 import { listDatasets } from "../api/catalog";
-import type { Dataset } from "../api/catalog";
 import { listRuns } from "../api/runs";
 import type { Run } from "../api/runs";
 import { SweepGrid } from "../sweeps/SweepGrid";
@@ -111,7 +110,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
   }, [live, boardId, replaceBoard]);
 
   // A job that became a run: the run and its dataset are needed to draw the result.
-  const [lookup, setLookup] = useState<{ runs: Run[]; datasets: Dataset[] }>({ runs: [], datasets: [] });
+  const [lookup, setLookup] = useState<{ runs: Run[]; datasets: DatasetSummary[] }>({ runs: [], datasets: [] });
   const wantRuns = board?.items.some((it) => it.kind === "job" && it.job.runId !== null && !lookup.runs.some((r) => r.id === it.job.runId)) ?? false;
   useEffect(() => {
     if (!wantRuns) return;

@@ -4,7 +4,7 @@ import { Button, Checkbox, Input, Select } from "../ui";
 import { TierBadge } from "../ui/TierBadge";
 import { createMask, forgetMask, maskTypeLabel } from "../api/masks";
 import type { CreateMask, Mask } from "../api/masks";
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import { isImage } from "../api/catalog";
 import { listSavedRegions, isLine } from "../api/regions";
 import type { SavedRegion } from "../api/regions";
@@ -24,7 +24,7 @@ const ruleText = (m: Mask): string => {
  * stated rule (a threshold, regions, a file you provide); the no-value mask is computed from the data. Showing one hatches it on the
  * plane; applying it is decided per analysis, per mask. Zero is a value: no mask here flags it unless its rule says so.
  */
-export function MasksPanel({ dataset, datasets }: { dataset: Dataset; datasets: Dataset[] }) {
+export function MasksPanel({ dataset, datasets }: { dataset: DatasetSummary; datasets: DatasetSummary[] }) {
   const image = isImage(dataset);
   const onHost = dataset.hostId !== 0;
   const { masks, error } = useMasks(image ? dataset.id : null);

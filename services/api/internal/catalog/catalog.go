@@ -47,6 +47,8 @@ type Dataset struct {
 	// Locations are the files this dataset's bytes are in, the registered one first (ADR 0053). Path and HostID above are
 	// the registered file. A location never changes what the dataset is; it says where else the same bytes may be read.
 	Locations []Location `json:"locations"`
+	// LocationCount is len(Locations), which the list row carries instead of the locations themselves.
+	LocationCount int `json:"locationCount"`
 	// Corrections are the researcher's WCS and unit corrections in force (or stale), from the latest record of their history
 	// (ADR 0061); nil when nothing is corrected. Header stays what the file said.
 	Corrections *Corrections `json:"corrections"`
@@ -55,6 +57,8 @@ type Dataset struct {
 	// with it; nil for a file no profile reads. Computed on read. It was also sent as vgtHeader until ADR 0068 slice 6; nothing stores
 	// that name (figure provenance is built from fields, not from this struct), so old JSON is read as it is: an unknown field is ignored.
 	OrientationHeader *VGTHeader `json:"orientationHeader"`
+	// Facts are the header facts the list carries instead of the header (see Summary); scan fills them from Header.
+	Facts Facts `json:"facts"`
 }
 
 // Interpretation is a user-declared overlay on a dataset (never inferred from values, never written to the file).
@@ -241,6 +245,7 @@ func scan(row interface{ Scan(...any) error }) (Dataset, error) {
 	}
 	d.ModifiedAt, d.AddedAt, d.Header = time.Unix(0, mod).UTC(), time.Unix(add, 0).UTC(), json.RawMessage(hdr)
 	d.Kind = kindOf(d.Header)
+	d.Facts = factsOf(d.Kind, d.Header)
 	return d, nil
 }
 
@@ -271,6 +276,7 @@ func (s *Store) Get(ws workspace.ID, id int64) (Dataset, error) {
 	}
 	if err == nil {
 		d.Locations, err = s.Locations(ws, id)
+		d.LocationCount = max(1, len(d.Locations))
 		for _, l := range d.Locations {
 			if l.Primary {
 				d.FileDev, d.FileIno = l.FileDev, l.FileIno
@@ -388,6 +394,7 @@ func (s *Store) List(ws workspace.ID) ([]Dataset, error) {
 		if out[i].Locations = locs[out[i].ID]; out[i].Locations == nil {
 			out[i].Locations = []Location{}
 		}
+		out[i].LocationCount = max(1, len(out[i].Locations))
 		if out[i].Interpretation, err = s.interpretation(out[i].ID, out[i]); err != nil {
 			return nil, err
 		}

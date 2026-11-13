@@ -3,12 +3,13 @@ import userEvent from "@testing-library/user-event";
 import type { Dataset, HealpixDataset, Header, ImageDataset } from "../api/catalog";
 import type { HealpixSampleResult } from "../api/analysis";
 import { HealpixSampleDone, HealpixSamplePanel, mapReason, targetReason } from "./HealpixSample";
+import { withFacts } from "./testDatasets";
 
 const axis = (n: number, ctype: string) => ({ axis: n, length: 10, ctype });
 const image = (id: number, name: string, ctypes: string[], hostId = 0): ImageDataset =>
-  ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, header: { axes: ctypes.map((c, i) => axis(i + 1, c)) } as unknown as Header });
+  withFacts({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, header: { axes: ctypes.map((c, i) => axis(i + 1, c)) } as unknown as Header });
 const planck = (over: Record<string, unknown> = {}, hostId = 0): HealpixDataset =>
-  ({ id: 1, name: "planck353.fits", path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, kind: "healpix", catalogDeclaration: null,
+  withFacts({ id: 1, name: "planck353.fits", path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, kind: "healpix", catalogDeclaration: null,
      header: { kind: "healpix", nside: 2048, npix: 50331648, ordering: "NESTED", coordsys: "GALACTIC", frame: "galactic", polcconv: "COSMO", columns: [], stokes_unit: "K_CMB", covariance_unit: null, has_qu_cov: true, has_i: true, bad_data: null, pixel_resolution_arcmin: 1.7, provenance_note: "", ...over } }) as unknown as HealpixDataset;
 
 const lmc = image(2, "lmc.fits", ["RA---SIN", "DEC--SIN", "VRAD"]);

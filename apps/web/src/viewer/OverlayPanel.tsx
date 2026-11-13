@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle, ArrowDown, ArrowUp, Pencil, Plus, X } from "lucide-react";
 import { Basis, Button, Icon, IconButton, Input, More, Select, Switch, leadClause } from "../ui";
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import { overlayBasis, overlayTitle } from "../scene/basis";
 import { needsGeometry } from "../scene/geometry";
 import { OVERLAY_COLOR_NAMES } from "../scene/palette";
@@ -29,7 +29,7 @@ const BUILT_IN = new Set([ORIENTATION_ID, REGIONS_ID]);
  * drawn. The base map's own orientation lines and regions can be hidden and moved but not removed: other controls drive them.
  */
 export function OverlayPanel({ scene, dispatch, geometry, datasets, picked = null, onPick = () => {} }: {
-  scene: Scene | null; dispatch: (a: PaneAction) => void; geometry: GeometryMap; datasets: Dataset[]; picked?: PickedSource | null; onPick?: (p: PickedSource | null) => void;
+  scene: Scene | null; dispatch: (a: PaneAction) => void; geometry: GeometryMap; datasets: DatasetSummary[]; picked?: PickedSource | null; onPick?: (p: PickedSource | null) => void;
 }) {
   const [editing, setEditing] = useState<{ id: string | null; draft: Draft } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -126,7 +126,7 @@ function OverlayBasis({ text }: { text: string }) {
 }
 
 function OverlayForm({ draft, adding, datasets, baseId, problem, onChange, onApply, onCancel }: {
-  draft: Draft; adding: boolean; datasets: Dataset[]; baseId: number; problem: string | null; onChange: (d: Draft) => void; onApply: () => void; onCancel: () => void;
+  draft: Draft; adding: boolean; datasets: DatasetSummary[]; baseId: number; problem: string | null; onChange: (d: Draft) => void; onApply: () => void; onCancel: () => void;
 }) {
   const set = (patch: Partial<Draft>) => onChange({ ...draft, ...patch });
   const isCat = draft.kind === "catalog";

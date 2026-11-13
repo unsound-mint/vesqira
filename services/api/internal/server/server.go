@@ -564,6 +564,8 @@ func fail(w http.ResponseWriter, code int, msg string) {
 }
 
 func (s *Server) list(w http.ResponseWriter, r *http.Request) {
+	w, done := gzipJSON(w, r)
+	defer done()
 	ds, err := s.Store.List(wsOf(r))
 	if err != nil {
 		log.Printf("list: %v", err)
@@ -580,7 +582,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	rows := make([]datasetRow, len(shown))
 	at := map[int64]int{}
 	for i, d := range shown {
-		rows[i] = datasetRow{Dataset: d}
+		rows[i] = datasetRow{Summary: d.Summary()}
 		at[d.ID] = i
 	}
 	if srcs, err := s.lc().MaskSources(wsOf(r)); err != nil {
@@ -597,10 +599,11 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"datasets": rows})
 }
 
-// datasetRow is a dataset in the list, with the datasets it is only the mask file of (ADR 0055, 0058). The list derives it from the
-// masks' rows on every request: a file that is also used for anything else, or whose masks were forgotten, has none.
+// datasetRow is a dataset in the list: the summary (no header, locations or file-header reading; GET /api/datasets/{id} sends them)
+// and the datasets it is only the mask file of (ADR 0055, 0058). The list derives the latter from the masks' rows on every request:
+// a file that is also used for anything else, or whose masks were forgotten, has none.
 type datasetRow struct {
-	catalog.Dataset
+	catalog.Summary
 	MaskSourceFor []maskSourceRef `json:"maskSourceFor,omitempty"`
 }
 

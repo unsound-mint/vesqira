@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Input, Select } from "../ui";
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import { createFigure } from "../api/boards";
 import type { Figure } from "../api/boards";
 import { getChannelGrid, getPanel } from "../api/channelmaps";
@@ -95,7 +95,7 @@ function Panel({ panel, plan, datasetId, shared, cached, onLoaded, colormap, str
 }
 
 /** A grid of channel maps (ADR 0049): consecutive or every k-th channel over a range, one shared colour scale, labelled spectral coordinates. */
-export function ChannelGrid({ v, dataset }: { v: Viewer; dataset: Dataset }) {
+export function ChannelGrid({ v, dataset }: { v: Viewer; dataset: DatasetSummary }) {
   const channels = v.view?.channels ?? 0;
   const [first, setFirst] = useState("1");
   const [last, setLast] = useState("");

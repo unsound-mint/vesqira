@@ -4,7 +4,7 @@ import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import { newRequestId } from "../api/http";
 import { createAnalysisJob, getDerived, runAnalysis } from "../api/analysis";
 import type { AnalysisOp, Derived, StatsSummary } from "../api/analysis";
-import type { Dataset } from "../api/catalog";
+import type { Dataset, DatasetSummary } from "../api/catalog";
 import type { Job } from "../api/jobs";
 import { ControlsView } from "../runs/ControlsView";
 import { MaskPolicies, badWeight, usesOf } from "./MaskPolicies";
@@ -74,7 +74,7 @@ function SourceResolution({ dataset, v, set }: { dataset: Dataset; v: Record<str
 }
 
 /** New files from a cube: statistics, moments, cutouts, slabs, and alignment. Results are new datasets with their provenance. */
-export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }: { dataset: Dataset; datasets: Dataset[]; channels: number; onCreated: (d: Dataset) => void; onJob: (j: Job) => void }) {
+export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }: { dataset: Dataset; datasets: DatasetSummary[]; channels: number; onCreated: (d: Dataset) => void; onJob: (j: Job) => void }) {
   const [op, setOp] = useState<AnalysisOp>("moment");
   const [v, setV] = useState<Record<string, string>>({ order: "0" });
   const [ref, setRef] = useState("");
@@ -251,7 +251,7 @@ export function StatsView({ st }: { st: StatsSummary }) {
 }
 
 /** How a derived dataset was made: operation, options, sources and the policy it kept. */
-export function DerivedPanel({ dataset, datasets }: { dataset: Dataset; datasets: Dataset[] }) {
+export function DerivedPanel({ dataset, datasets }: { dataset: DatasetSummary; datasets: DatasetSummary[] }) {
   const [d, setD] = useState<Derived | null>(null);
   useEffect(() => {
     setD(null);

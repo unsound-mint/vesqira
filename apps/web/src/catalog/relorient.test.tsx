@@ -1,19 +1,20 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { CatalogDataset, CatalogDeclaration, Dataset, Header, ImageDataset, Interpretation } from "../api/catalog";
+import type { CatalogDataset, CatalogDeclaration, Dataset, DatasetSummary, Header, ImageDataset, Interpretation } from "../api/catalog";
 import type { RelOrientSummary } from "../api/analysis";
 import { notReady, RelativeOrientationPanel, RelativeOrientationResult, RelOrientView } from "./RelativeOrientation";
 import { PRESETS } from "./presetsFixture";
+import { withFacts } from "./testDatasets";
 
 const interp = (over: Partial<Interpretation> = {}): Interpretation =>
   ({ kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: "pixel", quantity: "b_field", declaredBy: "user", declaredAt: "", stale: false, ...over }) as Interpretation;
 const map = (id: number, name: string, i: Interpretation | null = interp(), hostId = 0): ImageDataset =>
-  ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: i, nature: "", unitDeclaration: null, hostId, header: {} as Header });
+  withFacts({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: i, nature: "", unitDeclaration: null, hostId, header: {} as Header });
 const decl = (over: Partial<CatalogDeclaration> = {}): CatalogDeclaration =>
   ({ lon: "ra", lat: "dec", format: "degrees", frame: "icrs", equinox: null, values: [], declaredBy: "user", declaredAt: "", stale: false,
      angle: { column: "pa", unit: "deg", frame: "sky", quantity: "starlight_polarization", sigmaColumn: null }, ...over }) as CatalogDeclaration;
 const cat = (id: number, name: string, d: CatalogDeclaration | null = decl()): CatalogDataset =>
-  ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, kind: "catalog",
+  withFacts({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, kind: "catalog",
      header: { kind: "catalog", format: "csv", rows: 3, columns: [] }, catalogDeclaration: d }) as CatalogDataset;
 
 function mockFetch(routes: Record<string, (init?: RequestInit) => { status?: number; body: unknown }>) {
@@ -56,7 +57,7 @@ describe("relative orientation", () => {
   });
 
   it("offers catalogs with an angle and other orientation maps, and sends the parameters with the seed", async () => {
-    const created: Dataset[] = [];
+    const created: DatasetSummary[] = [];
     const calls = mockFetch({ "/api/analysis/relative-orientation": () => ({ status: 201, body: { dataset: cat(9, "relorient-1-2.csv"), summary: catalogSummary } }) });
     const psi = map(1, "psi.fits");
     const ds: Dataset[] = [psi, cat(2, "stars.csv"), cat(3, "plain.csv", decl({ angle: null })), map(4, "planck.fits"), map(5, "nhi.fits", null)];

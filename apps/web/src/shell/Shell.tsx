@@ -51,9 +51,10 @@ import { useProject } from "../projects/useProject";
 import { writeProjectFile } from "../api/projects";
 import { editorEnabled } from "../api/editor";
 import { terminalEnabled } from "../api/terminal";
-import { getCompat, isCatalog, isImage } from "../api/catalog";
+import { getCompat, isImage } from "../api/catalog";
 import { HealpixSampleDone, HealpixSamplePanel } from "../catalog/HealpixSample";
-import type { Compat, ImageDataset } from "../api/catalog";
+import type { Compat, ImageDataset, ImageSummary } from "../api/catalog";
+import { useDatasetDetail } from "../catalog/useDatasetDetail";
 import { useCatalog } from "../catalog/useCatalog";
 import { CompareBar, linkState } from "../viewer/CompareBar";
 import { getRendererNote, subscribeRendererNote } from "../viewer/glRenderer";
@@ -132,17 +133,21 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   // A virtual subset opened from the explorer is read by the same viewer, through /api/subsets/{sid} (the negative of its id is the
   // viewer's id for it). A stale one is not read at all: the main area says why and offers the re-pin.
   const openSub = subsetId !== null ? subs.subsets.find((x) => x.id === subsetId) ?? null : null;
-  const virtualDs = useMemo<(ImageDataset & { archived?: boolean }) | null>(() => {
+  const virtualDs = useMemo<ImageSummary | null>(() => {
     if (!openSub || openSub.stale) return null;
     const src = cat.allDatasets.find((d) => d.id === openSub.sourceId);
-    if (!src || isCatalog(src)) return null;
-    return { ...src, id: virtualId(openSub.id), name: openSub.name, modifiedAt: `${src.modifiedAt}#v${openSub.version}`, locations: [], archived: false } as ImageDataset & { archived?: boolean };
+    if (!src || !isImage(src)) return null;
+    return { ...src, id: virtualId(openSub.id), name: openSub.name, modifiedAt: `${src.modifiedAt}#v${openSub.version}`, locationCount: 1, archived: false };
   }, [openSub, cat.allDatasets]);
   const shownImage = virtualDs ?? cat.selectedImage;
   const viewerA = useViewer(shownImage);
   const [compareId, setCompareId] = useState<number | null>(null);
   const compareDs = cat.datasets.find((d) => d.id === compareId && d.id !== shownImage?.id) ?? null;
   const viewerB = useViewer(compareDs);
+  // The panels that read the header (the inspector, the file's own orientation, corrections, the beam) need the dataset in full, which
+  // the list does not carry: the selected one is read by the catalog hook, the compared one and a subset's source here.
+  const compareFull = useDatasetDetail(compareDs?.id ?? null, cat.allDatasets).detail;
+  const subsetSource = useDatasetDetail(virtualDs && openSub ? openSub.sourceId : null, cat.allDatasets).detail;
   const [active, setActive] = useState<"a" | "b">("a");
   const [stage, setStage] = useState<"map" | "grid">("map"); // the map pane(s), or a grid of channel maps of the open dataset
   const [compat, setCompat] = useState<Compat | null>(null);
@@ -153,6 +158,12 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const useB = active === "b" && compareDs !== null;
   const viewer = useB ? viewerB : viewerA;
   const actDs = useB ? compareDs : shownImage;
+  const actFull: ImageDataset | null = useMemo(() => {
+    const full = useB ? compareFull : virtualDs ? subsetSource : cat.detail;
+    if (!actDs || !full || !isImage(full)) return null;
+    // a subset is its source's header under the subset's own id, name and window version
+    return full.id === actDs.id ? full : { ...full, id: actDs.id, name: actDs.name, modifiedAt: actDs.modifiedAt, locations: [], archived: false };
+  }, [useB, compareFull, virtualDs, subsetSource, cat.detail, actDs]);
   const other = useB ? viewerA : viewerB;
   // The two panes are one link group (ADR 0042, section 4): on the same grid on their own, on different grids once the person
   // links them by WCS, and only while both are in it. Who has left, the name and the facets belong to this pair of datasets.
@@ -526,7 +537,8 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
         ) : subsetId !== null && !virtualDs ? (
           <SubsetPage key={subsetId} id={subsetId} onChanged={() => void subs.refresh()} onOpenDataset={(id) => { void cat.refreshDatasets(); selectDataset(id); }} onClose={() => { setSubsetId(null); void subs.refresh(); }} />
         ) : cat.selectedCatalog ? (
-          <CatalogView dataset={cat.selectedCatalog} problem={cat.problems[String(cat.selectedCatalog.id)] ? CATALOG_PROBLEM : undefined} />
+          cat.detailCatalog ? <CatalogView dataset={cat.detailCatalog} problem={cat.problems[String(cat.detailCatalog.id)] ? CATALOG_PROBLEM : undefined} /> : <p className={s.empty} role="status">{cat.detailError ? `Could not read this dataset: ${cat.detailError}` : "Reading the dataset…"}</p>
+
         ) : shownImage ? (
           <div className={s.stageWrap}>
             {virtualDs ? null : (
@@ -571,7 +583,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
             <>
               <NewerNotices notices={cat.newer.datasets[String(cat.selectedCatalog.id)]} onOpen={selectDataset} onRegister={(p) => { void cat.register(p); }} />
               <RelativeOrientationResult dataset={cat.selectedCatalog} datasets={cat.allDatasets} />
-              <CatalogInspector d={cat.selectedCatalog} problem={cat.problems[String(cat.selectedCatalog.id)] ? CATALOG_PROBLEM : undefined} onDeclare={cat.declareCatalog} onReread={() => { void cat.register(cat.selectedCatalog!.path); }} />
+              {cat.detailCatalog ? <CatalogInspector d={cat.detailCatalog} problem={cat.problems[String(cat.detailCatalog.id)] ? CATALOG_PROBLEM : undefined} onDeclare={cat.declareCatalog} onReread={() => { void cat.register(cat.detailCatalog!.path); }} /> : <p className={s.empty} role="status">{cat.detailError ? `Could not read this dataset: ${cat.detailError}` : "Reading the dataset…"}</p>}
               {cat.selectedCatalog.catalogDeclaration?.angle ? (
                 <Section title="Compare orientation" defaultOpen={false}>
                   <RelativeOrientationPanel key={cat.selectedCatalog.id} dataset={cat.selectedCatalog} datasets={cat.allDatasets} onCreated={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} />
@@ -580,7 +592,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
               <Section title="Nature of the data">
                 <NatureControl dataset={cat.selectedCatalog} onChange={cat.declareNature} />
               </Section>
-              <Section title="Locations" defaultOpen={false} meta={String(cat.selectedCatalog.locations?.length ?? 1)}>
+              <Section title="Locations" defaultOpen={false} meta={String(cat.selectedCatalog.locationCount)}>
                 <LocationsPanel key={cat.selectedCatalog.id} dataset={cat.selectedCatalog} hosts={cat.hosts} onChanged={() => void cat.refreshDatasets()} />
               </Section>
               <Section title="Archive or delete" defaultOpen={false} meta={cat.selectedCatalog.archived ? "archived" : undefined}>
@@ -600,12 +612,14 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
             </>
           ) : !actDs ? <p className={s.empty}>{subsetId !== null ? "A virtual subset is open: its window, history and actions are beside this panel. Choose its source for the viewer's tools." : cat.selectedHealpix ? (
             <Section title="HEALPix map">
-              <HealpixSamplePanel key={cat.selectedHealpix.id} dataset={cat.selectedHealpix} datasets={cat.allDatasets} onResult={(r) => { void cat.refreshDatasets().then(() => cat.select(r.dataset.id)); }} />
+              {cat.detailHealpix ? <HealpixSamplePanel key={cat.detailHealpix.id} dataset={cat.detailHealpix} datasets={cat.allDatasets} onResult={(r) => { void cat.refreshDatasets().then(() => cat.select(r.dataset.id)); }} /> : <p className={s.empty} role="status">{cat.detailError ? `Could not read this dataset: ${cat.detailError}` : "Reading the dataset…"}</p>}
             </Section>
           ) : "Nothing selected. Choose a dataset in the explorer."}</p> : <>
           {compareDs && shownImage ? (
             <Section title="Comparison">
-              <CompareInspector a={shownImage} b={compareDs} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
+              {cat.detail && cat.detail.id === shownImage.id && compareFull
+                ? <CompareInspector a={cat.detail} b={compareFull} va={viewerA} vb={viewerB} runs={cat.runs} compat={compat} onCreated={(d) => { void cat.refreshDatasets().then(() => { setCompareId(null); cat.select(d.id); }); }} />
+                : <p className={s.empty} role="status">Reading the datasets…</p>}
             </Section>
           ) : null}
           {actDs && runFor(cat.runs, actDs.id) ? (
@@ -623,7 +637,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
           </Section>
           {actDs && (viewer.view === null || viewer.view.channels === 1) ? (
             <Section title="Interpretation">
-              <InterpretationPanel key={actDs.id} v={viewer} dataset={actDs} datasets={cat.datasets} declare={cat.declare} />
+              {actFull ? <InterpretationPanel key={actFull.id} v={viewer} dataset={actFull} datasets={cat.datasets} declare={cat.declare} /> : <p className={s.empty} role="status">{cat.detailError ? `Could not read this dataset: ${cat.detailError}` : "Reading the dataset…"}</p>}
             </Section>
           ) : null}
           {actDs ? <HealpixSampleDone dataset={actDs} datasets={cat.allDatasets} onOpen={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} /> : null}
@@ -711,7 +725,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
           ) : null}
           {actDs ? (
             <Section title="Analysis" defaultOpen={false}>
-              <AnalysisPanel dataset={actDs} datasets={cat.datasets} channels={viewer.view?.channels ?? 1} onCreated={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} onJob={(j) => { setFocusJob(j.id); setMode("jobs"); }} />
+              {actFull ? <AnalysisPanel dataset={actFull} datasets={cat.datasets} channels={viewer.view?.channels ?? 1} onCreated={(d) => { void cat.refreshDatasets().then(() => cat.select(d.id)); }} onJob={(j) => { setFocusJob(j.id); setMode("jobs"); }} /> : <p className={s.empty} role="status">{cat.detailError ? `Could not read this dataset: ${cat.detailError}` : "Reading the dataset…"}</p>}
             </Section>
           ) : null}
           <Section title="Figure" defaultOpen={false}>
@@ -721,13 +735,17 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
             {actDs ? (
               <>
                 <NewerNotices notices={cat.newer.datasets[String(actDs.id)]} onOpen={selectDataset} onRegister={(p) => { void cat.register(p); }} />
-                <DatasetInspector d={actDs} problem={cat.problems[String(actDs.id)]} onReread={() => { void cat.register(actDs.path); }} />
-                <CorrectionsPanel key={actDs.id} dataset={actDs} onChanged={() => void cat.refreshDatasets()} />
+                {actFull ? (
+                  <>
+                    <DatasetInspector d={actFull} problem={cat.problems[String(actDs.id)]} onReread={() => { void cat.register(actDs.path); }} />
+                    <CorrectionsPanel key={actDs.id} dataset={actFull} onChanged={() => void cat.refreshDatasets()} />
+                  </>
+                ) : <p className={s.empty} role="status">{cat.detailError ? `Could not read this dataset: ${cat.detailError}` : "Reading the dataset…"}</p>}
               </>
             ) : <p className={s.empty}>Nothing selected. Unknown values show as —.</p>}
           </Section>
           {actDs ? (
-            <Section title="Locations" defaultOpen={false} meta={String(actDs.locations?.length ?? 1)}>
+            <Section title="Locations" defaultOpen={false} meta={String(actDs.locationCount)}>
               <LocationsPanel key={actDs.id} dataset={actDs} hosts={cat.hosts} onChanged={() => void cat.refreshDatasets()} />
             </Section>
           ) : null}

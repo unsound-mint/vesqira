@@ -8,6 +8,7 @@ import { SubsetForm } from "./SubsetForm";
 import { SubsetPage } from "./SubsetPage";
 import { SubsetsSection } from "./SubsetsSection";
 import { describe as describeSubset, fieldsOf, inputOf } from "./subsets";
+import { withFacts } from "./testDatasets";
 
 const api = vi.hoisted(() => ({
   createSubset: vi.fn(), editSubset: vi.fn(), repinSubset: vi.fn(), materialiseSubset: vi.fn(), deleteSubset: vi.fn(),
@@ -21,7 +22,7 @@ vi.mock("../api/regions", () => ({
   ]),
 }));
 
-const dataset = (over: Partial<Dataset> = {}) => ({ id: 7, path: "/data/a.fits", name: "a.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", interpretation: null, unitDeclaration: null, kind: "fits", header: { naxis: 3, axes: [] }, ...over }) as unknown as Dataset;
+const dataset = (over: Partial<Dataset> = {}) => withFacts({ id: 7, path: "/data/a.fits", name: "a.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", interpretation: null, unitDeclaration: null, kind: "fits", header: { naxis: 3, axes: [] }, ...over }) as unknown as Dataset;
 
 const def = { box: { x0: 3, x1: 20, y0: 2, y1: 15 }, step: 2, channels: { c0: 10, c1: 40 } };
 const view = (over: Partial<SubsetView> = {}): SubsetView => ({

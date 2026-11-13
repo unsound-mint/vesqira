@@ -7,8 +7,9 @@ import { captionLines } from "../viewer/figure";
 import { unitLabel } from "../viewer/format";
 import { CorrectionsPanel } from "./CorrectionsPanel";
 import { effectiveUnit } from "./unit";
+import { withFacts } from "./testDatasets";
 
-const ds = { id: 7, name: "cube.fits", path: "/d/cube.fits", hostId: 0, kind: "fits", header: { naxis: 3, bunit: "K", bunit_status: "declared", axes: [] }, interpretation: null, unitDeclaration: null, corrections: null } as unknown as Dataset;
+const ds = withFacts({ id: 7, name: "cube.fits", path: "/d/cube.fits", hostId: 0, kind: "fits", header: { naxis: 3, bunit: "K", bunit_status: "declared", axes: [] }, interpretation: null, unitDeclaration: null, corrections: null }) as unknown as Dataset;
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
 const at = "2026-11-12T10:00:00Z";
 
@@ -136,7 +137,7 @@ describe("correcting what the file says", () => {
 describe("a corrected unit is said wherever the unit is shown", () => {
   it("labels it as yours, filters by it, and the figure caption says what the file says", () => {
     expect(unitLabel("Jy/beam", "corrected")).toBe("Jy/beam (corrected by you)");
-    const d = { ...ds, corrections: { state: { unit: entry("Jy/beam", "K", "r") }, hash: "h", tier: "declared", recordId: 1, at, stale: false } } as unknown as Dataset;
+    const d = withFacts({ ...ds, corrections: { state: { unit: entry("Jy/beam", "K", "r") }, hash: "h", tier: "declared", recordId: 1, at, stale: false } }) as unknown as Dataset;
     expect(effectiveUnit(d)).toBe("Jy/beam");
     expect(effectiveUnit({ ...d, corrections: { ...d.corrections!, stale: true } } as Dataset)).toBe("K");
     const view = { width: 2, height: 2, channels: 1, bunit: "Jy/beam", bunit_status: "corrected", file_bunit: "K", wcs_corrected: ["CRVAL2"], fits_axes: { x: 1, y: 2, channel: null }, sky: { kind: "pixel" }, spectral: null, flags: { declared: false, channels: [] } } as unknown as View;

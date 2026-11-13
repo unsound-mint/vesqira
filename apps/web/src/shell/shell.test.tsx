@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { LIMITS, parseLayout } from "./useLayout";
 import { Shell } from "./Shell";
+import { withFacts } from "../catalog/testDatasets";
 
 describe("parseLayout", () => {
   it("clamps stored sizes into their limits", () => {
@@ -89,8 +90,8 @@ describe("Shell on a narrow screen", () => {
   it("closes the explorer overlay when a dataset is chosen, so the choice is not hidden behind it", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
-    const dataset = { id: 7, path: "/d/a.fits", name: "a.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, interpretation: null, nature: "", unitDeclaration: null,
-      header: { naxis: 2, bitpix: -32, bunit: null, bunit_status: "unresolved", specsys: null, radesys: null, axes: [] } };
+    const dataset = withFacts({ id: 7, path: "/d/a.fits", name: "a.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, interpretation: null, nature: "", unitDeclaration: null,
+      header: { naxis: 2, bitpix: -32, bunit: null, bunit_status: "unresolved", specsys: null, radesys: null, axes: [] } });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const body = { datasets: [dataset], runs: [], hosts: [], jobs: [], projects: [], notifications: [], unread: 0 };
       if (url.startsWith("/api/datasets/")) return new Response(JSON.stringify({ error: "not in this test" }), { status: 404, headers: { "Content-Type": "application/json" } });

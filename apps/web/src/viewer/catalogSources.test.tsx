@@ -10,6 +10,7 @@ import type { PaneAction, Scene } from "../scene/scene";
 import { OverlayPanel } from "./OverlayPanel";
 import { SourcePopover } from "./SourceRow";
 import type { PickedSource } from "./SourceRow";
+import { withFacts } from "../catalog/testDatasets";
 
 vi.mock("../api/catalog", async (orig) => ({ ...(await orig<typeof import("../api/catalog")>()), catalogRows: vi.fn() }));
 
@@ -31,12 +32,12 @@ const head = { kind: "catalog", dtype: "<f4", coords: "", placement, markers: 3,
 const geometry: GeometryMap = { "catalog-1": { key: "k", status: "ready", g: parseGeometry(frame(head, [4, 5, NaN, NaN, 1.17, 1, 8, 9, NaN, NaN, NaN, 2, 12, 3, NaN, NaN, 0.79, 3])) } };
 
 const col = (name: string, dtype = "float", unit: string | null = null) => ({ name, dtype, scalar: true, unit });
-const catalogDs = {
+const catalogDs = withFacts({
   id: 7, name: "starlight.tsv", kind: "catalog", interpretation: null, unitDeclaration: null,
   header: { kind: "catalog", format: "tsv", rows: 4, columns: [col("RA"), col("DEC"), col("PA"), col("P(%)", "float", "%"), col("sP(%)")] },
   catalogDeclaration: { lon: "RA", lat: "DEC", format: "degrees", frame: "icrs", equinox: null, angle: { column: "PA", unit: "deg", frame: "sky", quantity: "starlight_polarization", sigmaColumn: null }, values: [], declaredBy: "user", declaredAt: "2026-11-11T00:00:00Z", stale: false },
-} as unknown as Dataset;
-const base = { id: 1, name: "hi.fits", header: { bunit: "K", axes: [{ length: 32 }, { length: 24 }] }, interpretation: null, unitDeclaration: null } as unknown as Dataset;
+}) as unknown as Dataset;
+const base = withFacts({ id: 1, name: "hi.fits", header: { bunit: "K", axes: [{ length: 32 }, { length: 24 }] }, interpretation: null, unitDeclaration: null }) as unknown as Dataset;
 
 function Harness({ onScene }: { onScene: (s: Scene) => void }) {
   const [pane, dispatch] = useReducer(paneReducer, null, () => {

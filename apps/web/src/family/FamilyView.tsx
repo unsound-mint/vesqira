@@ -6,8 +6,7 @@ import { listFamilyCandidates, runFamily } from "../api/family";
 import type { FamilyCandidate, FamilyResult } from "../api/family";
 import { getPlane } from "../api/planes";
 import type { Plane } from "../api/planes";
-import { isImage } from "../api/catalog";
-import type { Dataset } from "../api/catalog";
+import { isImage, type DatasetSummary } from "../api/catalog";
 import { lut } from "../viewer/colormaps";
 import type { RampId } from "../viewer/colormaps";
 import { rampCss } from "../viewer/channelGrid";
@@ -26,7 +25,7 @@ const MAX = 12;
 const num = (v: number | null | undefined, digits = 4) => (v === null || v === undefined ? EM : String(Number(v.toPrecision(digits))));
 
 /** Maps that differ in one parameter, side by side on one scale, with how well they agree (ADR 0070). Nothing is resampled: maps on different grids are refused. */
-export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: Dataset[]; preset: FamilyPreset | null; onCatalogChanged?: () => void }) {
+export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: DatasetSummary[]; preset: FamilyPreset | null; onCatalogChanged?: () => void }) {
   const images = useMemo(() => datasets.filter(isImage).filter((d) => !d.archived), [datasets]);
   const [ids, setIds] = useState<number[]>([]);
   const [labels, setLabels] = useState<Record<number, string>>({});
@@ -182,10 +181,10 @@ function Legend({ id, range, unit, label }: { id: RampId; range: [number, number
   );
 }
 
-const byIdNaxis = (d: Dataset | undefined) => (d && isImage(d) ? d.header.naxis : 2);
+const byIdNaxis = (d: DatasetSummary | undefined) => (d && isImage(d) ? d.facts.naxis ?? 2 : 2);
 
 /** The panels, the agreement table and the statement of what was computed. */
-export function FamilyResultView({ result, channel, names, axial, datasets }: { result: FamilyResult; channel: number; names: string[]; axial: boolean; datasets: Map<number, Dataset> }) {
+export function FamilyResultView({ result, channel, names, axial, datasets }: { result: FamilyResult; channel: number; names: string[]; axial: boolean; datasets: Map<number, DatasetSummary> }) {
   const sum = result.summary;
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [problem, setProblem] = useState<string | null>(null);

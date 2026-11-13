@@ -1,4 +1,4 @@
-import type { Dataset } from "../api/catalog";
+import type { Dataset, DatasetSummary } from "../api/catalog";
 import type { Plane } from "../api/planes";
 import { glyphStride } from "../viewer/glyphs";
 import { limits } from "../viewer/render";
@@ -23,7 +23,7 @@ import type { Scene, SceneCompass, SceneDisplay, SceneMask, SceneOverlay } from 
  * - the masks hatched in the picture are the ones it drew (what is shown on screen is a view setting, not part of a pane's scene).
  * - the north and east arrows are recorded when the picture draws them, with the WCS state they rest on (ADR 0047, amendment).
  */
-export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scale: number; bunit: string | null; interp: Dataset["interpretation"]; reliability: Plane | null; geometry?: GeometryMap; datasets?: Dataset[]; /** The masks hatched in the picture (ADR 0055), by what they were when it was drawn. */ masks?: SceneMask[]; /** The north and east arrows the picture draws, from the viewer's compass (ADR 0047): absent draws none. */ compass?: SceneCompass }): Scene {
+export function figureScene(live: Scene, o: { plane: Plane; axial: boolean; scale: number; bunit: string | null; interp: Dataset["interpretation"]; reliability: Plane | null; geometry?: GeometryMap; datasets?: DatasetSummary[]; /** The masks hatched in the picture (ADR 0055), by what they were when it was drawn. */ masks?: SceneMask[]; /** The north and east arrows the picture draws, from the viewer's compass (ADR 0047): absent draws none. */ compass?: SceneCompass }): Scene {
   const { head } = o.plane;
   const d = live.base.display;
   let display: SceneDisplay;

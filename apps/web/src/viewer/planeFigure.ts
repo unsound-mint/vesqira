@@ -1,4 +1,4 @@
-import type { Dataset } from "../api/catalog";
+import type { Dataset, DatasetSummary } from "../api/catalog";
 import type { FigureRequest } from "../api/boards";
 import type { Plane, RegionShape, View } from "../api/planes";
 import { overlayBasis } from "../scene/basis";
@@ -18,12 +18,12 @@ import { limits } from "./render";
 import type { RangeMode, Stretch } from "./render";
 
 /** The name a figure's caption gives a dataset; never its id, which belongs to the owner's side (ADR 0011). */
-export const datasetNameOf = (dataset: Dataset, datasets: Dataset[] | undefined) => (id: number) =>
+export const datasetNameOf = (dataset: DatasetSummary, datasets: DatasetSummary[] | undefined) => (id: number) =>
   id === dataset.id ? dataset.name : datasets?.find((d) => d.id === id)?.name ?? "another dataset";
 
 export type PlaneFigureInput = {
-  dataset: Dataset;
-  datasets?: Dataset[];
+  dataset: DatasetSummary;
+  datasets?: DatasetSummary[];
   view: View;
   plane: Plane;
   /** The figure scene (`figureScene`): what the picture shows. */

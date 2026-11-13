@@ -6,6 +6,7 @@ import type { Dataset } from "../api/catalog";
 import { TreeRow } from "./TreeRow";
 import { ROW_PX, VirtualList, windowRange } from "./VirtualList";
 import tokens from "../../../../design/tokens.css?raw";
+import { withFacts } from "../catalog/testDatasets";
 
 // jsdom has no layout. The scroller is a div whose height and scroll position are set by hand, and the list's rectangle is
 // derived from that position the way a browser would report it.
@@ -103,7 +104,7 @@ describe("VirtualList", () => {
   });
 });
 
-const dataset = (i: number): Dataset => ({
+const dataset = (i: number): Dataset => withFacts({
   id: i + 1, path: `/data/synthetic/cube_${String(i).padStart(5, "0")}.fits`, name: `cube_${String(i).padStart(5, "0")}.fits`, sizeBytes: 1536 + i, modifiedAt: "", addedAt: "",
   hostId: 0, nature: "", unitDeclaration: null, interpretation: null,
   header: { naxis: 2, bitpix: -32, bunit: null, bunit_status: "unresolved", specsys: null, radesys: null, axes: [] },

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { addLocation, ApiError, fingerprintLocation, listLocations, removeLocation } from "../api/catalog";
-import type { Dataset, DatasetLocation, LocationList } from "../api/catalog";
+import type { DatasetSummary, DatasetLocation, LocationList } from "../api/catalog";
 import { Button, Checkbox, PathField } from "../ui";
 import { bytes } from "./format";
 import { KIND_TEXT, LINK_TEXT, short } from "./identity";
@@ -18,7 +18,7 @@ const day = (iso: string) => iso.slice(0, 10);
  * with its sampled fingerprint and full SHA-256 (or "not computed"), why it belongs to the dataset, and which one the viewer
  * reads from. Another file is linked only on evidence, or on your declaration, which is labelled as such.
  */
-export function LocationsPanel({ dataset, hosts = NO_HOSTS, onChanged }: { dataset: Dataset; hosts?: Host[]; onChanged?: () => void }) {
+export function LocationsPanel({ dataset, hosts = NO_HOSTS, onChanged }: { dataset: DatasetSummary; hosts?: Host[]; onChanged?: () => void }) {
   const [list, setList] = useState<LocationList | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [path, setPath] = useState("");

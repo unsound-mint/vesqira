@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Dataset, Header, ImageDataset } from "../api/catalog";
 import { FamilyView } from "./FamilyView";
+import { withFacts } from "../catalog/testDatasets";
 
 vi.mock("../api/planes", () => ({
   getPlane: vi.fn(async () => ({
@@ -10,7 +11,7 @@ vi.mock("../api/planes", () => ({
   })),
 }));
 
-const ds = (id: number, name: string, extra: Partial<ImageDataset> = {}): ImageDataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: { naxis: 2 } as Header, ...extra });
+const ds = (id: number, name: string, extra: Partial<ImageDataset> = {}): ImageDataset => withFacts({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: { naxis: 2 } as Header, ...extra });
 const maps = [ds(1, "a.fits"), ds(2, "b.fits"), ds(3, "c.fits")];
 
 function mockFetch(given: Record<string, (init?: RequestInit) => { status?: number; body: unknown }>) {

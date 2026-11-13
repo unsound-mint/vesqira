@@ -6066,8 +6066,40 @@ export interface components {
              */
             skyFrame?: "galactic" | "icrs" | null;
         };
-        /** @description A registered dataset: a reference to the original file plus header facts. The file itself is never altered. */
-        Dataset: {
+        /** @description The few header facts every dataset in the list carries instead of the header: read from the stored header of an image or cube, null or false for any other kind. The header itself (GET /api/datasets/{id}) stays the source; these are never edited. */
+        DatasetFacts: {
+            /** @description Number of image axes the header declares; null for a catalog or a HEALPix map */
+            naxis: number | null;
+            /** @description Length of the third axis, 1 for a plane; null for a catalog or a HEALPix map */
+            channels: number | null;
+            /** @description Length of the first image axis as declared; null when the header has fewer than two axes, and for a catalog or a HEALPix map */
+            width: number | null;
+            /** @description Length of the second image axis as declared; null when the header has fewer than two axes, and for a catalog or a HEALPix map */
+            height: number | null;
+            /** @description The CTYPE cards of the first two axes as declared, an empty string where an axis declares none; empty for a catalog or a HEALPix map */
+            ctypes: string[];
+            /** @description BUNIT as the file states it; null when it has none (or for a catalog or a HEALPix map) */
+            bunit: string | null;
+            /** @description True when the file itself states a unit, so nothing can be declared for it */
+            bunitStated: boolean;
+            /**
+             * Format: int64
+             * @description A catalog's row count; null for anything else
+             */
+            rows: number | null;
+            /** @description A HEALPix map's NSIDE; null for anything else */
+            nside: number | null;
+            /** @description A catalog's scalar numeric columns (float or int, one value per row) with the unit the file states, in the file's order; empty for anything else */
+            numericColumns: components["schemas"]["FactColumn"][];
+        };
+        /** @description A catalog column as the overlay form offers it */
+        FactColumn: {
+            name: string;
+            /** @description The unit the file states for the column; null when it states none */
+            unit: string | null;
+        };
+        /** @description A registered dataset as the list shows it: the reference to the original file and what every row of the explorer, the pickers and the boards reads. No header, locations or file-header reading (a catalog's column declaration is small and stays): GET /api/datasets/{id} returns those (Dataset). The file itself is never altered. */
+        DatasetSummary: {
             /** Format: int64 */
             id: number;
             path: string;
@@ -6078,8 +6110,6 @@ export interface components {
             modifiedAt: string;
             /** Format: date-time */
             addedAt: string;
-            /** @description FitsHeader when kind is fits, CatalogHeader when kind is catalog, HealpixHeader when kind is healpix */
-            header: components["schemas"]["FitsHeader"] | components["schemas"]["CatalogHeader"] | components["schemas"]["HealpixHeader"];
             /**
              * Format: int64
              * @description 0 for a file on this computer, otherwise the remote host that holds it
@@ -6100,17 +6130,25 @@ export interface components {
             kind: "fits" | "catalog" | "healpix";
             /** @description What the person declared about a catalog's columns; null for anything else */
             catalogDeclaration: components["schemas"]["CatalogDeclaration"] | null;
-            /** @description The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053). */
-            locations: components["schemas"]["DatasetLocation"][];
             /** @description The researcher's WCS and unit corrections in force or stale (ADR 0061); null when nothing is corrected. header stays what the file said. */
             corrections?: components["schemas"]["Corrections"] | null;
             /** @description Only on the dataset list: the datasets this file is the imported mask file of, when that is its only role (a file also used for a figure, region, analysis, run, or opened in the viewer has none). Derived from the masks' rows; nothing is hidden or unregistered by it (ADR 0058, mask files). */
             maskSourceFor?: components["schemas"]["MaskSourceRef"][];
+            facts: components["schemas"]["DatasetFacts"];
+            /** @description How many files the dataset's bytes are in, the registered one included; the locations themselves are in GET /api/datasets/{id} */
+            locationCount: number;
+        };
+        /** @description A registered dataset in full: the summary plus the header facts the worker read from the file when it was registered, where the bytes are, and what the file's own header says of an orientation. The file itself is never altered. */
+        Dataset: components["schemas"]["DatasetSummary"] & {
+            /** @description FitsHeader when kind is fits, CatalogHeader when kind is catalog, HealpixHeader when kind is healpix */
+            header: components["schemas"]["FitsHeader"] | components["schemas"]["CatalogHeader"] | components["schemas"]["HealpixHeader"];
+            /** @description The registered file first. A location never changes what the dataset is; it says where else the same bytes may be read (ADR 0053). */
+            locations: components["schemas"]["DatasetLocation"][];
             /** @description What the file's own header says of its orientation through the tool profile that read it (VGT.jl's PSIFRAME, PSIANGLE, VGTPROD, the VGT* run parameters and the input beam, today), and where the declaration in force disagrees with it; null for a file no profile reads. Computed on read (ADR 0014 amendment, ADR 0068 slice 3). It was also sent as vgtHeader until ADR 0068 slice 6. */
             orientationHeader?: components["schemas"]["OrientationHeader"] | null;
         };
         DatasetList: {
-            datasets: components["schemas"]["Dataset"][];
+            datasets: components["schemas"]["DatasetSummary"][];
         };
         SkyPixel: {
             /**

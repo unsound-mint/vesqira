@@ -15,6 +15,7 @@ import type { Mark } from "./overlays";
 import { OVERLAY_COLORS } from "./palette";
 import { DEFAULT_DISPLAY, newScene, sceneReducer } from "./scene";
 import type { Scene, SceneOverlay } from "./scene";
+import { withFacts } from "../catalog/testDatasets";
 
 const W = 40;
 const H = 30;
@@ -139,7 +140,7 @@ describe("what changes an overlay's geometry", () => {
 });
 
 describe("a figure of overlays from other datasets", () => {
-  const datasets = [{ id: 2, name: "co.fits", interpretation: null }, { id: 4, name: "psi.fits", interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: 5, frame: "pixel", quantity: "b_field" } }] as unknown as Dataset[];
+  const datasets = [{ id: 2, name: "co.fits", interpretation: null }, { id: 4, name: "psi.fits", interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: 5, frame: "pixel", quantity: "b_field" } }].map((d) => withFacts(d as { header?: unknown })) as unknown as Dataset[];
   const vgt: SceneOverlay = { id: "vgt", kind: "orientation", datasetId: 4, visible: true, sampling: { mode: "auto", gapPx: 16 }, length: "fixed", opacity: "reliability" };
   const beam: SceneOverlay = { id: "beam", kind: "beam", datasetId: 2, visible: true };
   const hidden: SceneOverlay = { id: "grid", kind: "grid", datasetId: 1, visible: false, frame: "galactic" };
@@ -176,7 +177,7 @@ describe("a figure of overlays from other datasets", () => {
 });
 
 describe("the overlay form", () => {
-  const ds = (id: number, over: Record<string, unknown> = {}) => ({ id, name: `d${id}.fits`, header: { bunit: "K", axes: [{ length: 32 }, { length: 24 }, { length: 64 }] }, interpretation: null, unitDeclaration: null, ...over }) as unknown as Dataset;
+  const ds = (id: number, over: Record<string, unknown> = {}) => withFacts({ id, name: `d${id}.fits`, header: { bunit: "K", axes: [{ length: 32 }, { length: 24 }, { length: 64 }] }, interpretation: null, unitDeclaration: null, ...over }) as unknown as Dataset;
   const datasets = [ds(1), ds(2), ds(3, { header: { bunit: null, axes: [{ length: 8 }, { length: 8 }] } }), ds(4, { interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: "pixel", quantity: "b_field" } })];
 
   it("builds contours in the file's unit, and says what is wrong in a sentence", () => {

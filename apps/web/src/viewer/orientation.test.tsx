@@ -7,6 +7,7 @@ import { axialMeanText, InterpretationPanel, meanText, reliabilityChoices, sugge
 import type { AxialSummary } from "../api/planes";
 import { axialDegrees, renderPlane } from "./render";
 import type { Viewer } from "./useViewer";
+import { withFacts } from "../catalog/testDatasets";
 
 describe("axial angles", () => {
   it("treats 0 and 180 degrees, and -10 and 170, as the same orientation", () => {
@@ -83,7 +84,7 @@ describe("orientation lines", () => {
 });
 
 describe("declaring an interpretation", () => {
-  const ds = (id: number, name: string, size = 4, path = `/d/${name}`): ImageDataset => ({ id, name, path, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: { axes: [{ axis: 1, length: size }, { axis: 2, length: size }] } as unknown as Header });
+  const ds = (id: number, name: string, size = 4, path = `/d/${name}`): ImageDataset => withFacts({ id, name, path, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: { axes: [{ axis: 1, length: size }, { axis: 2, length: size }] } as unknown as Header });
   const viewer = { view: { channels: 1 }, plane: { head: { stats: { min: 0, max: 3.1 } } } } as unknown as Viewer;
 
   it("suggests a reliability map by file name only", () => {
@@ -174,7 +175,7 @@ describe("declaring an interpretation", () => {
 
 describe("reliability map choices", () => {
   const ds = (id: number, name: string, size: number, path: string, hostId = 0, extra: object = {}): Dataset =>
-    ({ id, name, path, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, header: { axes: [{ axis: 1, length: size }, { axis: 2, length: size }] } as unknown as Header, ...extra }) as Dataset;
+    withFacts({ id, name, path, sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId, header: { axes: [{ axis: 1, length: size }, { axis: 2, length: size }] } as unknown as Header, ...extra }) as Dataset;
 
   it("lists only maps of the same size on the same host, never itself or an archived one", () => {
     const self = ds(1, "psi.fits", 64, "/a/psi.fits");

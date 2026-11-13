@@ -7,6 +7,7 @@ import * as api from "../api/projects";
 import { DatasetInspector } from "../catalog/DatasetInspector";
 import { UnitControl } from "../catalog/UnitControl";
 import { ImportView } from "./ImportView";
+import { withFacts } from "../catalog/testDatasets";
 
 vi.mock("../api/projects", async (orig) => ({
   ...(await orig<typeof import("../api/projects")>()),
@@ -19,7 +20,7 @@ vi.mock("../api/projects", async (orig) => ({
 
 const header = { naxis: 2, bitpix: -32, bunit: null, bunit_status: "unresolved", specsys: null, radesys: null, axes: [] };
 const ds = (declaredBy: string): ImageDataset =>
-  ({ id: 7, path: "/data/a.fits", name: "a.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", interpretation: null, header,
+  withFacts({ id: 7, path: "/data/a.fits", name: "a.fits", sizeBytes: 10, modifiedAt: "", addedAt: "", hostId: 0, nature: "", interpretation: null, header,
     unitDeclaration: { unit: "km/s", declaredBy, declaredAt: "2026-11-10T10:00:00Z", stale: false } }) as unknown as ImageDataset;
 
 beforeEach(() => vi.resetAllMocks());

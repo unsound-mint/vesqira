@@ -4,9 +4,10 @@ import { vi } from "vitest";
 import type { Dataset } from "../api/catalog";
 import { Explorer } from "./Explorer";
 import { MasksPanel } from "./MasksPanel";
+import { withFacts } from "./testDatasets";
 
 const make = (id: number, name: string, over: Record<string, unknown> = {}) =>
-  ({ id, name, path: `/d/${name}`, hostId: 0, kind: "fits", sizeBytes: 100, header: { bunit: null, bunit_status: "unresolved" }, interpretation: null, unitDeclaration: null, ...over }) as unknown as Dataset;
+  withFacts({ id, name, path: `/d/${name}`, hostId: 0, kind: "fits", sizeBytes: 100, header: { bunit: null, bunit_status: "unresolved" }, interpretation: null, unitDeclaration: null, ...over }) as unknown as Dataset;
 const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { "Content-Type": "application/json" } });
 
 const psi = make(1, "psi.fits");

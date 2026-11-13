@@ -1,5 +1,5 @@
 import { Button, Checkbox, Input, Pill, Select } from "../ui";
-import type { Compat, Dataset } from "../api/catalog";
+import type { Compat, DatasetSummary } from "../api/catalog";
 import { FACETS } from "../scene/link";
 import type { LinkFacet, LinkGroup, LinkPrefs, Pill as PillSpec } from "../scene/link";
 import s from "./CompareBar.module.css";
@@ -24,7 +24,7 @@ export type LinkControls = {
 
 export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChange, compat, loading, error, shared = false, canShare = false, shareReason = null, onShared, link }: {
   hosts?: { id: number; name: string }[];
-  datasets: Dataset[];
+  datasets: DatasetSummary[];
   selectedId: number;
   compareId: number | null;
   onChange: (id: number | null) => void;

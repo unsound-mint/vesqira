@@ -7,6 +7,7 @@ import type { Run } from "../api/runs";
 import { EntryActions } from "./EntryActions";
 import { matchDataset, matchRun } from "./filter";
 import { datasetVocabulary } from "./vocabulary";
+import { withFacts } from "./testDatasets";
 
 const impact = (over: Partial<Impact> = {}): Impact => ({
   kind: "dataset", id: 7, name: "a.fits", archived: false, blocked: false, blockers: [], digest: "d1",
@@ -113,7 +114,7 @@ describe("archive and delete", () => {
 });
 
 describe("archived in the filter", () => {
-  const d = (over: Partial<Dataset>) => ({ id: 1, name: "a.fits", nature: "", hostId: 0, header: { bunit: "K", bunit_status: "declared" }, unitDeclaration: null, interpretation: null, ...over }) as unknown as Dataset;
+  const d = (over: Partial<Dataset>) => withFacts({ id: 1, name: "a.fits", nature: "", hostId: 0, header: { bunit: "K", bunit_status: "declared" }, unitDeclaration: null, interpretation: null, ...over }) as unknown as Dataset;
   it("hides archived datasets unless asked, and archived:yes shows only them", () => {
     expect(matchDataset(d({}), "", undefined)).toBe(true);
     expect(matchDataset(d({ archived: true }), "", undefined)).toBe(false);

@@ -1,4 +1,4 @@
-import { isCatalog, isImage, type CatalogDataset, type Dataset, type ImageDataset } from "../api/catalog";
+import { isCatalog, isImage, type CatalogSummary, type ImageSummary, type DatasetSummary } from "../api/catalog";
 import type { OverlayColor } from "./palette";
 import type { Scene, SceneOverlay } from "./scene";
 import { ORIENTATION_ID, REGIONS_ID } from "./scene";
@@ -52,17 +52,17 @@ export function emptyDraft(kind: AddableKind, datasetId: number | null): Draft {
 }
 
 /** A point catalog has no grid to contour and no beam, so only images and cubes are overlay sources. */
-export const imageDatasets = (datasets: Dataset[]): ImageDataset[] => datasets.filter((d): d is ImageDataset => isImage(d));
+export const imageDatasets = (datasets: DatasetSummary[]): ImageSummary[] => datasets.filter((d): d is ImageSummary => isImage(d));
 
 /** The catalogs a catalog overlay may draw: point catalogs whose column declaration is in force (a missing or stale one would be refused). */
-export const catalogCandidates = (datasets: Dataset[]): CatalogDataset[] =>
-  datasets.filter((d): d is CatalogDataset & { archived?: boolean } => isCatalog(d) && !d.archived && !!d.catalogDeclaration && !d.catalogDeclaration.stale);
+export const catalogCandidates = (datasets: DatasetSummary[]): CatalogSummary[] =>
+  datasets.filter((d): d is CatalogSummary => isCatalog(d) && !d.archived && !!d.catalogDeclaration && !d.catalogDeclaration.stale);
 
 /** The columns a catalog overlay can read numbers from: one value per row, numeric as the worker read them. */
-export const numericColumns = (d: CatalogDataset) => d.header.columns.filter((c) => c.scalar && (c.dtype === "float" || c.dtype === "int"));
+export const numericColumns = (d: CatalogSummary) => d.facts.numericColumns;
 
 /** The datasets an overlay of this kind may come from: orientation lines from another map declared axial; contours from any map not declared as angles; a beam from any; the grid from the base only. */
-export function candidates(kind: AddableKind, datasets: Dataset[], baseId: number): ImageDataset[] {
+export function candidates(kind: AddableKind, datasets: DatasetSummary[], baseId: number): ImageSummary[] {
   const images = imageDatasets(datasets);
   if (kind === "grid") return images.filter((d) => d.id === baseId);
   if (kind === "orientation") return images.filter((d) => d.id !== baseId && d.interpretation?.kind === "axial_orientation");
@@ -72,13 +72,13 @@ export function candidates(kind: AddableKind, datasets: Dataset[], baseId: numbe
 }
 
 /** The overlay dataset's brightness unit as the worker will state it: the file's BUNIT, else a unit declared for it (not stale). */
-export function unitOf(d: ImageDataset): string | undefined {
-  if (d.header.bunit) return d.header.bunit;
+export function unitOf(d: ImageSummary): string | undefined {
+  if (d.facts.bunit) return d.facts.bunit;
   return d.unitDeclaration && !d.unitDeclaration.stale ? d.unitDeclaration.unit : undefined;
 }
 
-/** The channels of a registered dataset by its header: the third axis, or one plane. The worker checks the index again. */
-export const channelsOf = (d: ImageDataset): number => (d.header.axes.length > 2 ? Math.max(1, d.header.axes[2]!.length) : 1);
+/** The channels of a registered dataset by its header facts: the third axis, or one plane. The worker checks the index again. */
+export const channelsOf = (d: ImageSummary): number => d.facts.channels ?? 1;
 
 const numbers = (text: string): number[] | null => {
   const parts = text.split(/[\s,;]+/).filter(Boolean);
@@ -98,7 +98,7 @@ export function newOverlayId(kind: AddableKind, scene: Scene): string {
 }
 
 /** The overlay the draft describes, or the first problem as a sentence. */
-export function draftToOverlay(d: Draft, id: string, visible: boolean, datasets: Dataset[], baseId: number): SceneOverlay | string {
+export function draftToOverlay(d: Draft, id: string, visible: boolean, datasets: DatasetSummary[], baseId: number): SceneOverlay | string {
   if (d.kind === "catalog") return catalogOverlay(d, id, visible, datasets);
   const pool = imageDatasets(datasets);
   const ds = d.kind === "grid" ? pool.find((x) => x.id === baseId) : pool.find((x) => x.id === d.datasetId);
@@ -178,7 +178,7 @@ function styleOf(d: Draft): { color: OverlayColor; width?: number; dash?: "dashe
 }
 
 /** A catalog overlay from the draft. The position columns, frame and the angle's meaning are the catalog's declaration, not the draft's. */
-function catalogOverlay(d: Draft, id: string, visible: boolean, datasets: Dataset[]): SceneOverlay | string {
+function catalogOverlay(d: Draft, id: string, visible: boolean, datasets: DatasetSummary[]): SceneOverlay | string {
   const ds = catalogCandidates(datasets).find((x) => x.id === d.datasetId);
   if (!ds) return "Choose a point catalog whose columns are declared (and not out of date).";
   const style = styleOf(d);

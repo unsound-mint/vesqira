@@ -1,4 +1,4 @@
-import type { Dataset } from "../api/catalog";
+import type { DatasetSummary } from "../api/catalog";
 import { createFigure } from "../api/boards";
 import type { Figure, FigureRequest } from "../api/boards";
 import { blobToBase64, captionLines, composeSpectrumFigure, figureScale, FIGURE_WIDTH } from "./figure";
@@ -14,7 +14,7 @@ import { shownMaskIds } from "./useMasks";
 import type { Viewer } from "./useViewer";
 
 /** The title a figure of what the viewer shows gets when the author gives none. */
-export function defaultFigureTitle(v: Viewer, dataset: Dataset): string {
+export function defaultFigureTitle(v: Viewer, dataset: DatasetSummary): string {
   const { view, plane } = v;
   return `${dataset.name}${view && plane && view.channels > 1 ? `, channel ${plane.head.channel + 1}` : ""}`;
 }
@@ -24,7 +24,7 @@ export function defaultFigureTitle(v: Viewer, dataset: Dataset): string {
  * picture is composed in the browser from the drawn canvas, so the viewer must have drawn the full plane. Throws an
  * Error with a sentence for the user when it cannot.
  */
-export async function saveViewFigure(v: Viewer, dataset: Dataset, opts: { title?: string; caption?: string; kind?: "plane" | "spectrum"; datasets?: Dataset[]; /** Draw north and east arrows when the viewer has them (ADR 0047, amendment); on unless false. */ compass?: boolean } = {}): Promise<Figure> {
+export async function saveViewFigure(v: Viewer, dataset: DatasetSummary, opts: { title?: string; caption?: string; kind?: "plane" | "spectrum"; datasets?: DatasetSummary[]; /** Draw north and east arrows when the viewer has them (ADR 0047, amendment); on unless false. */ compass?: boolean } = {}): Promise<Figure> {
   const { view, plane } = v;
   const kind = opts.kind ?? "plane";
   if (!view || !plane) throw new Error("The image is not drawn yet.");

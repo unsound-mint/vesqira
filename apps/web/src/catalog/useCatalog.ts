@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { addLocation, ApiError, deleteCatalogDeclaration, getAvailability, getNewer, isCatalog, isHealpix, isImage, listDatasets, putCatalogDeclaration, registerDataset, sameContentOffer, setInterpretation, setNature, setUnit } from "../api/catalog";
-import type { CatalogDataset, CatalogDeclarationRequest, Dataset, ImageDataset, InterpretationRequest, Nature, NewerResults, Problem } from "../api/catalog";
+import type { CatalogDeclarationRequest, Dataset, DatasetSummary, ImageSummary, InterpretationRequest, Nature, NewerResults, Problem } from "../api/catalog";
+import { useDatasetDetail } from "./useDatasetDetail";
 import type { Offer } from "./SameContentOffer";
 import { listHosts } from "../api/hosts";
 import { listJobs } from "../api/jobs";
@@ -9,13 +10,21 @@ import type { Host } from "../api/hosts";
 import { importRun, listRuns } from "../api/runs";
 import type { Run } from "../api/runs";
 
+/** The row of the list for a dataset a change just returned in full: what the list would have sent. */
+function summaryOf(d: Dataset): DatasetSummary {
+  const { header: _header, locations: _locations, orientationHeader: _orientation, catalogDeclaration: _declaration, ...row } = d; // eslint-disable-line @typescript-eslint/no-unused-vars
+  return row;
+}
+
 export function useCatalog() {
-  // Every dataset, archived ones included: an archived one still opens and still resolves for what refers to it. `datasets`
-  // below is what lists and pickers offer.
-  const [allDatasets, setDatasets] = useState<Dataset[]>([]);
+  // Every dataset as a list row (no header; see useDatasetDetail), archived ones included: an archived one still opens and still
+  // resolves for what refers to it. `datasets` below is what lists and pickers offer.
+  const [allDatasets, setDatasets] = useState<DatasetSummary[]>([]);
   // The pickers (compare, reliability, analysis) offer images only: a point catalog has no pixel grid.
-  const datasets = useMemo(() => allDatasets.filter((d): d is ImageDataset & { archived?: boolean } => !d.archived && isImage(d)), [allDatasets]);
+  const datasets = useMemo(() => allDatasets.filter((d): d is ImageSummary => !d.archived && isImage(d)), [allDatasets]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  // The selected dataset in full: the header, locations and file-header reading the list leaves out.
+  const { detail, error: detailError, put } = useDatasetDetail(selectedId, allDatasets);
   const [runs, setRuns] = useState<Run[]>([]);
   const [hosts, setHosts] = useState<Host[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -54,11 +63,18 @@ export function useCatalog() {
     };
   }, []);
 
+  /** A change returned the dataset in full: its row in the list and the open panel take it at once. */
+  const adopt = useCallback((d: Dataset) => {
+    setDatasets((cur) => cur.map((x) => (x.id === d.id ? { ...summaryOf(d), maskSourceFor: x.maskSourceFor, archived: x.archived ?? d.archived } : x)));
+    put(d);
+  }, [put]);
+
   /** Returns an error message for the form, or null on success. */
   const register = useCallback(async (path: string, opts: { asNew?: boolean } = {}): Promise<string | null> => {
     try {
       const d = await registerDataset(path, opts);
-      setDatasets((cur) => [...cur.filter((x) => x.id !== d.id), d].sort((a, b) => a.name.localeCompare(b.name)));
+      setDatasets((cur) => [...cur.filter((x) => x.id !== d.id), summaryOf(d)].sort((a, b) => a.name.localeCompare(b.name)));
+      put(d);
       setSelectedId(d.id);
       setOffer(null);
       checkFiles();
@@ -71,7 +87,7 @@ export function useCatalog() {
       }
       return e instanceof ApiError ? e.message : "Could not register the file.";
     }
-  }, [checkFiles]);
+  }, [checkFiles, put]);
 
   /** Add the offered file as another location of a dataset instead of registering a duplicate. Returns an error text, or null. */
   const addAsLocation = useCallback(async (datasetId: number, path: string): Promise<string | null> => {
@@ -89,13 +105,12 @@ export function useCatalog() {
   /** Declare (or clear) what the user says a dataset is. Returns an error text with reasons, or null on success. */
   const declare = useCallback(async (id: number, body: InterpretationRequest): Promise<string | null> => {
     try {
-      const d = await setInterpretation(id, body);
-      setDatasets((cur) => cur.map((x) => (x.id === d.id ? d : x)));
+      adopt(await setInterpretation(id, body));
       return null;
     } catch (e) {
       return e instanceof ApiError ? [e.message, ...e.reasons].join(" · ") : "Could not save the interpretation.";
     }
-  }, []);
+  }, [adopt]);
 
   /** Import a run folder; returns an error text, or null. Refreshes datasets, because the import registers outputs and may declare one. */
   const importRunResult = useCallback(async (path: string, hostId?: number): Promise<{ id: number } | { error: string }> => {
@@ -129,40 +144,42 @@ export function useCatalog() {
   /** Declare (null withdraws) which columns of a catalog are positions, their frame and an optional angle. Returns an error text with reasons, or null. */
   const declareCatalog = useCallback(async (id: number, body: CatalogDeclarationRequest | null): Promise<string | null> => {
     try {
-      const d: CatalogDataset = body === null ? await deleteCatalogDeclaration(id) : await putCatalogDeclaration(id, body);
-      setDatasets((cur) => cur.map((x) => (x.id === d.id ? { ...d, archived: x.archived } : x)));
+      adopt(body === null ? await deleteCatalogDeclaration(id) : await putCatalogDeclaration(id, body));
       return null;
     } catch (e) {
       return e instanceof ApiError ? [e.message, ...e.reasons].join(" · ") : "Could not save the declaration.";
     }
-  }, []);
+  }, [adopt]);
 
   /** Declare or withdraw the unit of a file without BUNIT. Returns an error text, or null on success. */
   const declareUnit = useCallback(async (id: number, unit: string | null): Promise<string | null> => {
     try {
-      const d = await setUnit(id, unit === null ? { clear: true } : { unit });
-      setDatasets((cur) => cur.map((x) => (x.id === d.id ? d : x)));
+      adopt(await setUnit(id, unit === null ? { clear: true } : { unit }));
       return null;
     } catch (e) {
       return e instanceof ApiError ? e.message : "Could not save the unit.";
     }
-  }, []);
+  }, [adopt]);
 
   const declareNature = useCallback(async (id: number, nature: Nature): Promise<string | null> => {
     try {
-      const d = await setNature(id, nature);
-      setDatasets((cur) => cur.map((x) => (x.id === d.id ? d : x)));
+      adopt(await setNature(id, nature));
       return null;
     } catch (e) {
       return e instanceof ApiError ? e.message : "Could not save.";
     }
-  }, []);
+  }, [adopt]);
 
   const catalogCount = useMemo(() => allDatasets.filter((d) => !d.archived && isCatalog(d)).length, [allDatasets]);
+  // What opens at once is the list's row: the viewer, the pickers and most panels read nothing the row lacks. The panels that need the
+  // header (inspector, interpretation from the file, corrections, a catalog's columns) take the `detail*` ones, null while it is read.
   const selected = allDatasets.find((d) => d.id === selectedId) ?? null;
   const selectedImage = selected && isImage(selected) ? selected : null;
   const selectedCatalog = selected && isCatalog(selected) ? selected : null;
   const selectedHealpix = selected && isHealpix(selected) ? selected : null;
+  const detailImage = detail && isImage(detail) ? detail : null;
+  const detailCatalog = detail && isCatalog(detail) ? detail : null;
+  const detailHealpix = detail && isHealpix(detail) ? detail : null;
 
-  return { problems, newer, offer, dismissOffer: () => setOffer(null), addAsLocation, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, selectedHealpix, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, importRunResult, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
+  return { problems, newer, offer, dismissOffer: () => setOffer(null), addAsLocation, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, selectedHealpix, detail, detailImage, detailCatalog, detailHealpix, detailError, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, importRunResult, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
 }

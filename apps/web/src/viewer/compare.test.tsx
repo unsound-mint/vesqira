@@ -4,8 +4,9 @@ import type { Header, ImageDataset } from "../api/catalog";
 import { CompareBar, linkState } from "./CompareBar";
 import type { LinkControls } from "./CompareBar";
 import { defaultPrefs, linkGroup, linkPills } from "../scene/link";
+import { withFacts } from "../catalog/testDatasets";
 
-const ds = (id: number, name: string): ImageDataset => ({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: {} as Header });
+const ds = (id: number, name: string): ImageDataset => withFacts({ id, name, path: "", sizeBytes: 1, modifiedAt: "", addedAt: "", interpretation: null, nature: "", unitDeclaration: null, hostId: 0, header: {} as Header });
 const all = [ds(1, "a.fits"), ds(2, "b.fits"), ds(3, "c.fits")];
 
 describe("comparing maps", () => {

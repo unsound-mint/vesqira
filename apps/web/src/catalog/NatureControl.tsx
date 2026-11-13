@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Dataset, Nature } from "../api/catalog";
+import type { Nature, DatasetSummary } from "../api/catalog";
 import { Select } from "../ui";
 import s from "./AnalysisPanel.module.css";
 
@@ -10,7 +10,7 @@ const TEXT: Record<string, string> = {
 };
 
 /** What the data is, as you declare it. The file cannot say; it travels with figures and the review page. */
-export function NatureControl({ dataset, onChange }: { dataset: Dataset; onChange: (id: number, n: Nature) => Promise<string | null> }) {
+export function NatureControl({ dataset, onChange }: { dataset: DatasetSummary; onChange: (id: number, n: Nature) => Promise<string | null> }) {
   const [err, setErr] = useState<string | null>(null);
   return (
     <div className={s.wrap}>

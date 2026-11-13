@@ -5,9 +5,10 @@ import type { GeometryMap } from "../scene/geometry";
 import { DEFAULT_DISPLAY, initialPane, paneReducer } from "../scene/scene";
 import type { PaneAction, Scene } from "../scene/scene";
 import { OverlayPanel } from "./OverlayPanel";
+import { withFacts } from "../catalog/testDatasets";
 
 const ds = (id: number, name: string, over: Record<string, unknown> = {}) =>
-  ({ id, name, header: { bunit: "K", axes: [{ length: 32 }, { length: 24 }, { length: 64 }] }, interpretation: null, unitDeclaration: null, ...over }) as unknown as Dataset;
+  withFacts({ id, name, header: { bunit: "K", axes: [{ length: 32 }, { length: 24 }, { length: 64 }] }, interpretation: null, unitDeclaration: null, ...over }) as unknown as Dataset;
 const datasets = [ds(1, "hi.fits"), ds(2, "co.fits"), ds(3, "psi.fits", { interpretation: { kind: "axial_orientation", unit: "deg", reliabilityId: null, frame: "pixel", quantity: "b_field" } })];
 
 /** The panel over the real pane reducer, so a test sees what each action does to the scene, not only that it was sent. */
