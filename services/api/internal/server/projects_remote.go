@@ -123,6 +123,8 @@ func hostErrStatus(err error) (int, string) {
 		return 422, "the host refused: " + re.Message
 	case errors.Is(err, context.Canceled):
 		return 499, "canceled"
+	case errors.Is(err, worker.ErrReplyTooLarge):
+		return 502, "the host's answer was larger than Vesqira accepts; the connection itself works"
 	default:
 		return 502, "the host is not reachable (is the VPN up?)"
 	}
