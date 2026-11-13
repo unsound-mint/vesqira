@@ -11,7 +11,7 @@ export function ChangedSince({ round, since, previous }: { round: number; since:
       <h2 id="changed-since" className={s.h}>Changed since {date}</h2>
       <p className={s.small}>
         Round {round}{since.label ? `, after “${since.label}”` : ""} · {summary(since.items, since.removedCount)}.
-        {!open ? " The earlier round is no longer available, so only what this round holds is described." : ""}
+        {!open ? " The earlier round is no longer available: its pictures are not shown, and if it was withdrawn its text and comments are not shown either." : ""}
       </p>
       {since.lines.length > 0 ? (
         <ul className={s.list}>{since.lines.map((l, i) => <li key={i}>{lineText(l)}</li>)}</ul>

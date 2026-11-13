@@ -541,3 +541,44 @@ func TestPreflightShowsTheRoundAPublishWouldMake(t *testing.T) {
 		t.Error("a preflight made a snapshot")
 	}
 }
+
+// carriedRounds lists the rounds the carried comments of a review were made in.
+func carriedRounds(r Review) []int {
+	out := []int{}
+	for _, c := range r.Snapshot.Round.Since.Carried {
+		out = append(out, c.Round)
+	}
+	return out
+}
+
+func TestRevokingRoundOneTakesItsCommentsOutOfRoundThreeToo(t *testing.T) {
+	for _, revokeBefore := range []bool{false, true} {
+		x := newRounds(t)
+		if _, err := x.s.AddComment(x.tok2, CommentInput{FigureRevision: x.a.Revision, Author: "Supervisor", Body: "Better."}); err != nil {
+			t.Fatal(err)
+		}
+		if revokeBefore {
+			x.s.Revoke(ws1, x.sn1.ID)
+		}
+		_, tok3 := publish(t, x.s, x.b, "round three")
+		if !revokeBefore {
+			if r3, _ := x.s.Review(tok3); fmt.Sprint(carriedRounds(r3)) != "[1 1 2 1]" {
+				t.Fatalf("before revoking: %v", carriedRounds(r3))
+			}
+			x.s.Revoke(ws1, x.sn1.ID)
+		}
+		r3, err := x.s.Review(tok3)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fmt.Sprint(carriedRounds(r3)) != "[2]" {
+			t.Errorf("revoked before publishing=%v: carried from rounds %v, want only round 2", revokeBefore, carriedRounds(r3))
+		}
+		if r3.Previous == nil || !r3.Previous.Available {
+			t.Errorf("round 2 is still valid: %+v", r3.Previous)
+		}
+		if raw, _ := json.Marshal(r3); strings.Contains(string(raw), "Is the stretch linear?") {
+			t.Errorf("revoked before publishing=%v: round 1's comment reached round 3", revokeBefore)
+		}
+	}
+}

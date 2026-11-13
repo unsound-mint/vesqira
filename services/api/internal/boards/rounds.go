@@ -411,12 +411,17 @@ func (s *Store) addRound(ws workspace.ID, boardID int64, fr *Frozen) error {
 	for _, j := range removed {
 		since.Removed = append(since.Removed, RemovedItem{Title: p.frozen.Items[j].Title})
 	}
+	st, err := s.roundStatuses(ws, boardID, 0)
+	if err != nil {
+		return err
+	}
 	if !p.revoked { // a withdrawn round's comments are not copied into a new one
 		cs, err := s.Comments(p.id)
 		if err != nil {
 			return err
 		}
-		since.Carried = carryComments(p.frozen, n, cs, fr.Items, changes, prevOf)
+		// comments an earlier, now revoked round contributed are not carried on either
+		since.Carried = dropRevoked(carryComments(p.frozen, n, cs, fr.Items, changes, prevOf), st)
 	}
 	if p.revoked {
 		since.redact()
@@ -464,32 +469,73 @@ func carryComments(prev Frozen, prevRound int, own []Comment, cur []FrozenItem, 
 	return out
 }
 
-// previousOf finds the round before the snapshot with this id, from the snapshot's own board and workspace (the reviewer listener
-// has only the token, which resolved to this id).
-func (s *Store) previousOf(token string, id int64) (prevSnapshot, bool, error) {
+// roundStatus is what the reviewer path needs to know about an earlier round: whether its link still opens. The frozen document is
+// not read there.
+type roundStatus struct {
+	revoked, expired bool
+}
+
+// roundStatuses lists, in round order (index 0 is round 1), the status of a board's snapshots before the one with id (all of them with
+// before 0). Only revoked and expires_at are read.
+func (s *Store) roundStatuses(ws workspace.ID, boardID, before int64) ([]roundStatus, error) {
+	if boardID == FigureShareBoard {
+		return nil, nil
+	}
+	rows, err := s.db.Query(`SELECT revoked,expires_at FROM snapshots WHERE board_id=? AND workspace_id=? AND (?=0 OR id<?) ORDER BY id`, boardID, ws, before, before)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	now := time.Now().Unix()
+	var out []roundStatus
+	for rows.Next() {
+		var rv, exp int64
+		if err := rows.Scan(&rv, &exp); err != nil {
+			return nil, err
+		}
+		out = append(out, roundStatus{revoked: rv != 0, expired: now >= exp})
+	}
+	return out, rows.Err()
+}
+
+// statusesOf is roundStatuses for the snapshot a reviewer token opened, from that snapshot's own board and workspace (the reviewer
+// listener has only the token, which resolved to this id).
+func (s *Store) statusesOf(token string, id int64) ([]roundStatus, error) {
 	var boardID int64
 	var ws workspace.ID
 	// a capability lookup: the token that resolved to this snapshot names its workspace
 	if err := s.db.QueryRow(`SELECT board_id, workspace_id FROM snapshots WHERE id=? AND token_hash=?`, id, hashToken(token)).Scan(&boardID, &ws); err != nil {
-		return prevSnapshot{}, false, err
+		return nil, err
 	}
-	p, _, ok, err := s.previousSnapshot(ws, boardID, id)
-	return p, ok, err
+	return s.roundStatuses(ws, boardID, id)
 }
 
-// reviewRound answers whether the earlier round is still open to this reader. When it was revoked (or cannot be found), the earlier
-// round's content is withheld from fr, which is the reader's copy. An expired earlier round keeps its frozen text, which this
-// snapshot owns, and loses only its picture.
+// dropRevoked removes the carried comments made in a round that has since been revoked. A comment copied forward through a middle
+// round is still that earlier round's content, so revoking round 1 takes it out of round 3 as well as round 2.
+func dropRevoked(cs []CarriedComment, st []roundStatus) []CarriedComment {
+	out := []CarriedComment{}
+	for _, c := range cs {
+		if c.Round >= 1 && c.Round <= len(st) && !st[c.Round-1].revoked {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// reviewRound answers whether the earlier round is still open to this reader. When the previous round was revoked (or cannot be
+// found), its content is withheld from fr, which is the reader's copy; comments from any revoked round are dropped. An expired
+// earlier round keeps its frozen text, which this snapshot owns, and loses only its picture.
 func (s *Store) reviewRound(token string, id int64, fr *Frozen) *PreviousStatus {
 	if fr.Round == nil || fr.Round.Since == nil {
 		return nil
 	}
-	p, ok, err := s.previousOf(token, id)
-	if err != nil || !ok || p.revoked {
+	st, err := s.statusesOf(token, id)
+	if err != nil || len(st) == 0 || st[len(st)-1].revoked {
 		fr.Round.Since.redact()
 		return &PreviousStatus{}
 	}
-	return &PreviousStatus{Available: !p.expired}
+	fr.Round.Since.Carried = dropRevoked(fr.Round.Since.Carried, st)
+	return &PreviousStatus{Available: !st[len(st)-1].expired}
 }
 
 // previousPicture reports whether sha is the earlier picture of a redrawn figure of this snapshot and the earlier round's link is
@@ -505,8 +551,8 @@ func (s *Store) previousPicture(token string, id int64, fr Frozen, sha string) b
 	if !listed {
 		return false
 	}
-	p, ok, err := s.previousOf(token, id)
-	return err == nil && ok && !p.revoked && !p.expired
+	st, err := s.statusesOf(token, id)
+	return err == nil && len(st) > 0 && !st[len(st)-1].revoked && !st[len(st)-1].expired
 }
 
 // roundChanges is a snapshot's comparison for the owner's history. A snapshot made before rounds has none stored: it is compared with
