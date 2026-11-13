@@ -134,3 +134,13 @@
   border-left: 2px solid var(--accent);
   background: var(--bg-2);
 }
+
+/* the requests table: below the page width it scrolls inside its own region (ScrollTable) instead of squeezing "Here", whose text is the long part */
+.requests {
+  min-width: 40rem;
+}
+
+.requests th:nth-child(3),
+.requests td:nth-child(3) {
+  min-width: 14rem;
+}
