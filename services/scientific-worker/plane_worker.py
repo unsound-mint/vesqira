@@ -380,9 +380,42 @@ class Cube:
             idx.append(ys if f == self.y else xs if f == self.x else (channel if f == self.chan else 0))
         return tuple(idx)
 
+    def _hint_block(self, hdul, arr, c0: int, c1: int, ys: slice, xs: slice) -> None:
+        """Tell the kernel which bytes of the mapped file the next block reads, so a cold cube is read for those bytes and in
+        parallel. Without it each channel's few rows fault one at a time and every fault reads a readahead window of several MB:
+        a 10 x 10 box over 600 channels asked the disk for 2.4 GB (measured, 5 GiB cube on NVMe) and waited on 600 reads in turn.
+        MADV_RANDOM switches that readahead off for this mapping and MADV_WILLNEED queues the exact byte span of each channel.
+        Only hints: values are never affected, and any failure (no mmap object, other platform) leaves the plain read."""
+        try:
+            import mmap as _mmap
+            mm = hdul._file._mmap
+            if not isinstance(arr, np.ndarray) or mm is None:
+                return
+            page = _mmap.PAGESIZE
+            probe = np.frombuffer(mm, dtype=np.uint8, count=1)
+            base = probe.__array_interface__["data"][0]
+            del probe
+            mm.madvise(_mmap.MADV_RANDOM)
+            n = c1 - c0 if self.chan is not None else 1
+            for k in range(n):
+                v = arr[self._index(c0 + k if self.chan is not None else 0, ys, xs)]
+                if not isinstance(v, np.ndarray) or v.size == 0:
+                    continue
+                lo = v.__array_interface__["data"][0]
+                hi = lo + sum((d - 1) * abs(st) for d, st in zip(v.shape, v.strides)) + v.itemsize
+                if lo < base or hi > base + len(mm):
+                    continue
+                start = (lo - base) // page * page
+                mm.madvise(_mmap.MADV_WILLNEED, start, hi - base - start)
+        except (AttributeError, OSError, ValueError, TypeError, BufferError):
+            return
+
     def _channel_block(self, hdul, c0: int, c1: int, ys: slice, xs: slice) -> np.ndarray:
         """Physical values of channels [c0, c1) over a region, as an array (channels, y, x)."""
-        raw = np.array(fits_array(hdul)[self._index(slice(c0, c1), ys, xs)])
+        arr = fits_array(hdul)
+        if os.environ.get("VESQIRA_NO_READ_HINTS") != "1":      # off switch for the equality test and for measurements
+            self._hint_block(hdul, arr, c0, c1, ys, xs)
+        raw = np.array(arr[self._index(slice(c0, c1), ys, xs)])
         if self.chan is None:                                  # a map without a channel axis is one channel
             raw = raw[np.newaxis]
             return self._physical(np.swapaxes(raw, 1, 2) if self.x > self.y else raw)

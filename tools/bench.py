@@ -122,6 +122,19 @@ class Worker:
         with open(f"/proc/{pid}/status") as f:
             return int(f.read().split(key + ":")[1].split()[0]) // 1024
 
+    def _pid(self) -> int:
+        return int(open(self.pid_file).read()) if self.pid_file else self.p.pid
+
+    def read_bytes(self) -> int:
+        """Bytes the worker's reads sent to the storage layer (cache hits are not counted): /proc/PID/io read_bytes."""
+        with open(f"/proc/{self._pid()}/io") as f:
+            return int(f.read().split("read_bytes:")[1].split()[0])
+
+    def major_faults(self) -> int:
+        """Page faults that had to wait for the disk (field 12 of /proc/PID/stat); a mapped read makes no read() call."""
+        with open(f"/proc/{self._pid()}/stat") as f:
+            return int(f.read().rsplit(")", 1)[1].split()[9])
+
     def rss_mb(self) -> int:
         return self._status("VmRSS")
 
@@ -223,9 +236,11 @@ def run(path: str, nx: int, ny: int, nc: int, repeats: int, worker: "Worker | No
         err = None
         before = w.received
         resident = None
+        io0 = mf0 = 0
         if drop is not None:
             drop(path)
             resident = cached_fraction(path)       # a page the worker still has mapped is not evicted: say so per row
+            io0, mf0 = w.read_bytes(), w.major_faults()
         for i in range(repeats if not isinstance(req, list) else 1):
             for r in reqs:
                 ms, head = w.ask(**r)
@@ -238,6 +253,8 @@ def run(path: str, nx: int, ny: int, nc: int, repeats: int, worker: "Worker | No
         entry: dict = {"rss_mb": w.rss_mb(), "peak_mb": w.peak_mb()}
         if resident is not None:
             entry["resident_after_drop_pct"] = round(100 * resident, 2)
+            entry["disk_read_mib"] = round((w.read_bytes() - io0) / 2**20, 1)     # load-independent: what the disk was asked for
+            entry["major_faults"] = w.major_faults() - mf0
         if err:
             entry["error"] = err
         else:
@@ -458,12 +475,12 @@ def main() -> int:
                     if shutil.which("rsync"):
                         res["transfer_resume"] = transfer_bench(d, sshd, a.transfer_mib, a.transfer_bwlimit)
     print(f"sparse cube {nx}x{ny}x{nc} ({res['cube']['logical_gib']:.1f} GiB logical); page-cache speed, not disk, except the disk_ and ssh_ rows")
-    print(f"{'op':22s} {'first ms':>9s} {'median':>8s} {'p95':>8s} {'rss MB':>7s} {'peak MB':>8s} {'reply KB':>9s} {'cached %':>9s}")
+    print(f"{'op':22s} {'first ms':>9s} {'median':>8s} {'p95':>8s} {'rss MB':>7s} {'peak MB':>8s} {'reply KB':>9s} {'cached %':>9s} {'read MiB':>9s} {'majflt':>7s}")
     for name, e in res["ops"].items():
         if "error" in e:
             print(f"{name:22s} {'refused: ' + str(e['error']):>38s} {e['rss_mb']:7d}")
         else:
-            print(f"{name:22s} {e['first_ms']:9.1f} {e['median_ms']:8.1f} {e['p95_ms']:8.1f} {e['rss_mb']:7d} {e.get('peak_mb', 0):8d} {e.get('reply_bytes', 0) / 1024:9.1f} {(format(e['resident_after_drop_pct'], '9.2f') if 'resident_after_drop_pct' in e else ' ' * 9)}")
+            print(f"{name:22s} {e['first_ms']:9.1f} {e['median_ms']:8.1f} {e['p95_ms']:8.1f} {e['rss_mb']:7d} {e.get('peak_mb', 0):8d} {e.get('reply_bytes', 0) / 1024:9.1f} {(format(e['resident_after_drop_pct'], '9.2f') if 'resident_after_drop_pct' in e else ' ' * 9)} {e.get('disk_read_mib', ''):>9} {e.get('major_faults', ''):>7}")
     for n in notes:
         print("note: " + n)
     if "transfer_resume" in res:
