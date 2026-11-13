@@ -1212,7 +1212,10 @@ def op_healpix_sample(args) -> dict:
 
 
 def review_inputs(args):
-    """The crop, the fit and what the crop says about channels and units, for the decomposition review (ADR 0046): (params, crop, dat, nx, ny, n, scales)."""
+    """The crop, the decomposition and what the crop says about channels and units, for the decomposition review (ADR 0046, 0068):
+    (params, crop, decomposition, nx, ny, n, scales). The decomposition is the run profile's declaration (`decomposition` in the
+    parameters) over `dat_path`, or ROHSA's reading of that .dat when the request carries none."""
+    import decomp
     import gaussreview as gr
     from plane_worker import rohsa_velocity_axis
     try:
@@ -1227,6 +1230,8 @@ def review_inputs(args):
         fail("the decomposition review needs the .dat's path and the number of Gaussians")
     dat = authorize(dat)
     c = open_cube(args.input)
+    if isinstance(params.get("decomposition"), dict) and "\0" in json.dumps(params["decomposition"]):
+        fail("the decomposition declaration is not valid")
     if c.chan is None or c.channels < 2:
         fail("the crop has no spectral axis of at least two channels")
     world, dv, axis = rohsa_velocity_axis(c)
@@ -1235,8 +1240,16 @@ def review_inputs(args):
         w = world(np.array([0.0, 1.0]))
         w0, step = float(w[0]), float(w[1] - w[0])
     bunit, src = unit_of(c, args.declared_unit)
-    sc = gr.Scales(c.channels, w0, step, axis, bunit, src)
-    return params, c, dat, c.shape[c.x], c.shape[c.y], n, sc
+    sc = gr.Scales(c.channels, w0, step, axis, bunit, src, (c.spectral_facts() or {}).get("specsys"))
+    nx, ny = c.shape[c.x], c.shape[c.y]
+    try:
+        dec = decomp.open_decomposition(params, sc, nx, ny, n, dat, authorize, c.h)
+        if dec.amp_basis != decomp.GRID:
+            # the amplitudes carry their own unit (a declared one, or the amplitude map's BUNIT): the weights are in it, not in the crop's
+            sc.bunit, sc.bunit_source = dec.amp_unit, "declared" if dec.amp_basis == "declared" else "file"
+    except (decomp.Refusal, decomp.Bad) as e:
+        fail(getattr(e, "message", None) or str(e))
+    return params, c, dec, nx, ny, n, sc
 
 
 def review_cache(params: dict) -> str | None:
@@ -1251,8 +1264,10 @@ def review_cache(params: dict) -> str | None:
 
 def review_common(sc, dat, extra: dict) -> dict:
     import gaussreview as gr
-    out = {"dat": gr.dat_identity(dat), "convention": "centre = the crop's velocity axis at (file mean - 1) channels; sigma in km/s = sigma in channels x |km/s per channel|; "
-           "a component whose sigma is not positive and finite is invalid and left out; an amplitude of 0 is a value"}
+    out = {"dat": gr.dat_identity(dat), "convention": "centre = the crop's velocity axis at the component's channel (a file mean counts from the declared base); "
+           "sigma in km/s = sigma in channels x |km/s per channel| (a FWHM is first divided by 2 sqrt(2 ln 2)); "
+           "a component whose sigma is not positive and finite is invalid and left out; an amplitude of 0 is a value; a NaN slot is not fitted here",
+           "record": dat.record()}
     if sc.bunit and sc.bunit_source in OWNED_UNIT:
         note_unit(out, sc.bunit_source, sc.bunit, "the crop")
     elif sc.bunit:
@@ -1263,6 +1278,7 @@ def review_common(sc, dat, extra: dict) -> dict:
 
 def op_rohsa_sigmav(args) -> dict:
     """The sigma-v diagram of a decomposition: widths against centres, weighted, with each cell's contributor count (gaussreview.sigmav)."""
+    import decomp
     import gaussreview as gr
     params, c, dat, nx, ny, n, sc = review_inputs(args)
     dv_default, ds_default = gr.default_bins(sc)
@@ -1270,14 +1286,15 @@ def op_rohsa_sigmav(args) -> dict:
         v_edges = gr.linear_edges(params.get("velocity_bins") or dv_default, "centre")
         s_edges = gr.linear_edges(params.get("sigma_bins") or ds_default, "width")
         res = gr.sigmav(dat, nx, ny, n, sc, params.get("weight") or "integrated", v_edges, s_edges, cache_dir=review_cache(params))
-    except gr.Refusal as e:
-        fail(str(e))
+    except (gr.Refusal, decomp.Bad) as e:
+        fail(getattr(e, "message", None) or str(e))
     res["width"], res["height"] = nx, ny
     return {"ok": True, "op": "rohsa_sigmav", "summary": review_common(sc, dat, res)}
 
 
 def op_rohsa_cellmask(args) -> dict:
     """The pixels that have a component in one cell of the diagram, as a packed mask (gaussreview.cell_mask)."""
+    import decomp
     import gaussreview as gr
     params, c, dat, nx, ny, n, sc = review_inputs(args)
     dv_default, ds_default = gr.default_bins(sc)
@@ -1288,20 +1305,21 @@ def op_rohsa_cellmask(args) -> dict:
         v_edges = gr.linear_edges(params.get("velocity_bins") or dv_default, "centre")
         s_edges = gr.linear_edges(params.get("sigma_bins") or ds_default, "width")
         res = gr.cell_mask(dat, nx, ny, n, sc, v_edges, s_edges, cell["s"], cell["v"], cache_dir=review_cache(params) or fail("the cache folder for the pixel index is not set"))
-    except gr.Refusal as e:
-        fail(str(e))
+    except (gr.Refusal, decomp.Bad) as e:
+        fail(getattr(e, "message", None) or str(e))
     res["cell"] = {"s": cell["s"], "v": cell["v"]}
     return {"ok": True, "op": "rohsa_cellmask", "summary": review_common(sc, dat, res)}
 
 
 def op_rohsa_classmaps(args) -> dict:
     """One map per width class, summed over the decomposition, written as <out stem>-class<i>.fits (gaussreview.class_maps)."""
+    import decomp
     import gaussreview as gr
     params, c, dat, nx, ny, n, sc = review_inputs(args)
     try:
         res = gr.class_maps(dat, nx, ny, n, sc, params.get("weight") or "integrated", gr.class_cuts(params.get("edges")))
-    except gr.Refusal as e:
-        fail(str(e))
+    except (gr.Refusal, decomp.Bad) as e:
+        fail(getattr(e, "message", None) or str(e))
     maps = res.pop("maps")
     stem = args.out[:-5] if args.out.endswith(".fits") else args.out
     for cl in res["classes"]:
