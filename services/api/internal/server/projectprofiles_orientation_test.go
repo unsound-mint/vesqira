@@ -111,6 +111,12 @@ func TestProjectProfileOrientationThatContradictsTheCardsRefusesTheImport(t *tes
 	e := newProfEnv(t)
 	proj, run := e.degTool(t, "vgt_run_current/psi_demo.fits", `{"frame": "pixel", "unit": "deg", "statistics": "axial"}`)
 	e.open(t, proj)
+	count := func() int {
+		var all struct{ Datasets []catalog.Dataset }
+		e.json(t, "GET", "/api/datasets", nil, 200, &all)
+		return len(all.Datasets)
+	}
+	before := count()
 	code, out := e.call(t, "POST", "/api/runs/import", map[string]any{"path": run})
 	if code != 422 {
 		t.Fatalf("contradicting import: %d %s, want 422", code, out)
@@ -119,6 +125,9 @@ func TestProjectProfileOrientationThatContradictsTheCardsRefusesTheImport(t *tes
 		if !strings.Contains(string(out), want) {
 			t.Errorf("the refusal %s does not name %q", out, want)
 		}
+	}
+	if after := count(); after != before {
+		t.Errorf("a refused import left %d dataset(s) in the catalog (%d before, %d after): nothing was imported", after-before, before, after)
 	}
 	var list struct{ Runs []json.RawMessage }
 	if code, b := e.call(t, "GET", "/api/runs", nil); code == 200 {

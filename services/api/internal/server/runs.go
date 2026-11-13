@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -173,6 +174,9 @@ func (s *Server) proposeOrientation(ctx context.Context, prof *runs.Profile, byR
 // roles the profile gives them. A name the record does not carry, or a file that is not there, is skipped (nothing is invented);
 // a file that is there and cannot be registered stops the import with the reason.
 func (s *Server) registerRecordOutputs(ctx context.Context, src runSource, prof *runs.Profile, parsed runs.Parsed) ([]runs.Output, map[string]catalog.Dataset, int, string) {
+	if code, msg := s.checkDeclaredOrientation(ctx, src, prof, parsed); code != 0 {
+		return nil, nil, code, msg
+	}
 	var outs []runs.Output
 	byRole := map[string]catalog.Dataset{}
 	for _, ref := range prof.Products() {
@@ -187,15 +191,49 @@ func (s *Server) registerRecordOutputs(ctx context.Context, src runSource, prof 
 		if !found {
 			continue
 		}
-		if ref.Role == runs.RoleOrientation {
-			if why := s.orientationContradiction(ctx, prof, d); why != "" {
-				return nil, nil, 422, file + ": " + why
-			}
-		}
 		byRole[ref.Role] = d
 		outs = append(outs, runs.Output{Role: ref.Role, Product: ref.Product, DatasetID: d.ID, Name: d.Name})
 	}
 	return outs, byRole, 0, ""
+}
+
+// headerPeeker is a run source whose files' headers can be read without registering them.
+type headerPeeker interface {
+	PeekHeader(ctx context.Context, name string) (json.RawMessage, bool)
+}
+
+func (l localRun) PeekHeader(ctx context.Context, name string) (json.RawMessage, bool) {
+	real, err := l.s.roots(wsCtx(ctx)).Resolve(filepath.Join(l.dir, name))
+	if err != nil || hasCatalogExt(real) || l.s.Worker == nil {
+		return nil, false
+	}
+	h, err := l.s.Worker.Header(ctx, real)
+	return h, err == nil
+}
+
+// checkDeclaredOrientation refuses, before any file of the run is registered, an orientation output whose header cards contradict the
+// profile's declared convention, so "nothing was imported" is true. A file that cannot be read here is left to the registration, which
+// says why; a declaration on a source whose headers cannot be read before registering (a host) is refused, since it could not be checked.
+func (s *Server) checkDeclaredOrientation(ctx context.Context, src runSource, prof *runs.Profile, parsed runs.Parsed) (int, string) {
+	if prof.Orientation.Decl == nil {
+		return 0, ""
+	}
+	pk, local := src.(headerPeeker)
+	for _, ref := range prof.Products() {
+		file, ok := parsed.OutputFiles[ref.Product]
+		if !ok || ref.Role != runs.RoleOrientation {
+			continue
+		}
+		if !local {
+			return 422, "the profile " + prof.Label() + " declares an orientation, which can only be checked against a file on this computer, and this run is on a host; nothing was imported"
+		}
+		if hdr, ok := pk.PeekHeader(ctx, file); ok {
+			if why := orientationContradiction(prof, catalog.VGTOf(hdr)); why != "" {
+				return 422, file + ": " + why
+			}
+		}
+	}
+	return 0, ""
 }
 
 // runProfile is the profile that read a scanned run (a row stored before profiles existed has only its record kind).
@@ -725,16 +763,11 @@ func proposedPsi(d catalog.Dataset, rel *int64) (catalog.Interpretation, bool) {
 // profile's declared convention disagree, naming both, and "" when there is nothing to refuse: the profile declares no orientation,
 // the header has no card of any tool that states one, or the cards agree. Neither side is picked: the cards are the file's own
 // statement and the declaration is the researcher's, so a difference is for them to settle in the profile or the file.
-func (s *Server) orientationContradiction(ctx context.Context, prof *runs.Profile, d catalog.Dataset) string {
+func orientationContradiction(prof *runs.Profile, h *catalog.VGTHeader) string {
 	decl := prof.Orientation.Decl
-	if decl == nil {
-		return ""
+	if decl == nil || h == nil {
+		return "" // no declaration, or no card of a tool that states an orientation: the declaration fills what the file does not say
 	}
-	cur, err := s.Store.Get(wsCtx(ctx), d.ID)
-	if err != nil || cur.OrientationHeader == nil {
-		return "" // no card of a tool that states an orientation: the declaration fills what the file does not say
-	}
-	h := cur.OrientationHeader
 	who := "the project profile " + prof.Label()
 	if prof.Origin != nil {
 		who += " (" + prof.Origin.File + ")"
