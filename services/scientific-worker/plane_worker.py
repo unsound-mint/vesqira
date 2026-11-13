@@ -535,7 +535,9 @@ class Cube:
         fin = values[np.isfinite(values)]
         fits_radians = bool(unit == "deg" and fin.size and float(np.max(np.abs(fin))) <= math.pi + 1e-9)   # degrees would use a wider range
         result = {"values_fit_radians": fits_radians, "pixels": npix, "angles_finite": int(ok.sum()), "angles_excluded": int(npix - ok.sum()),
-                  "outside_zero_to_180": out_of_range, "unweighted": axial_summary(two, None, circmean, circvar), "weighted": None}
+                  "outside_zero_to_180": out_of_range, "unweighted": axial_summary(two, None, circmean, circvar), "weighted": None,
+                  # the finite values' extremes in the declared unit, so a caller can refuse a unit the values cannot be in without reading the plane
+                  "value_min": float(fin.min()) if fin.size else None, "value_max": float(fin.max()) if fin.size else None}
         if weights is not None:
             if (weights.shape[weights.x], weights.shape[weights.y]) != (nx, ny) or weights.channels != 1:
                 raise Refused("bad_request", "the weight map has a different shape")

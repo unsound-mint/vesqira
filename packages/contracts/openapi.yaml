@@ -2098,6 +2098,55 @@ paths:
       x-listener: owner
       x-vesqira-permission: dataset.write
       responses: {'200': {description: ok}}
+  /api/datasets/{id}/interpretation/apply-preview:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      operationId: owner_s_applyPreviewRoute_get_api_datasets_id_interpretation_apply_preview
+      x-listener: owner
+      x-vesqira-permission: dataset.read
+      summary: "What copying this dataset's orientation declaration to the other runs would do, from the catalog alone"
+      description: "Targets are the same-role (orientation) outputs of the other runs in the workspace read with the same tool profile, inside the project or folder of the source's run. A target that is already declared, or whose own header states the convention, is skipped. No file is read: the values are checked against the unit when the apply is confirmed."
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "integer"
+            format: "int64"
+        - name: "scope"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            enum:
+              - "project"
+              - "folder"
+      responses:
+        "200":
+          description: "the preview, or eligible false with the reason"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/ApplyPreview"
+        "400":
+          description: "an unknown scope"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "no such dataset"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/datasets/{id}/link:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -4474,6 +4523,83 @@ paths:
                 $ref: "#/components/schemas/Error"
         "422":
           description: "invalid VPN command"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/interpretations/apply:
+    post:
+      operationId: owner_s_applyRoute_post_api_interpretations_apply
+      x-listener: owner
+      x-vesqira-permission: dataset.write
+      summary: "Copy a dataset's orientation declaration to the previewed targets, each re-checked on the server"
+      description: "Each target gets the source's kind, unit, frame and quantity, declared by the user and applied from the source (applyId, appliedFrom, appliedBy). The reliability map is the target run's own reliability output. A target already declared is never overwritten; a target whose header states the convention is skipped; a target that is not a single plane, or whose values cannot be in the declared unit (radians with values beyond 2 pi), is refused with a reason. Each target is written on its own, so one refusal leaves the others."
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/ApplyRequest"
+      responses:
+        "200":
+          description: "the outcome of every target"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/ApplyResult"
+        "400":
+          description: "no confirmation, no targets, too many, or an unknown scope"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: "no such source dataset"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: "the source's declaration cannot be applied (not its own, not an orientation output, stale)"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: "Error"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/interpretations/apply/{applyId}/undo:
+    parameters:
+      - {name: applyId, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: owner_s_undoApplyRoute_post_api_interpretations_apply_applyId_undo
+      x-listener: owner
+      x-vesqira-permission: dataset.write
+      summary: "Remove exactly the declarations one apply wrote that have not been edited or cleared since"
+      parameters:
+        - name: "applyId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "how many were removed; a second call removes none"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/ApplyUndoResult"
+        "400":
+          description: "not an apply id"
           content:
             "application/json":
               schema:
@@ -9066,6 +9192,16 @@ components:
             - "galactic"
             - "icrs"
           description: "The celestial frame a sky angle is stated in when that is not the grid's own: only a declaration the file's own header made (declaredBy profile:<name>@<version>, or vgt-file-header on older rows) has one, computed from the stored header on read. Null means the grid's own frame, which is what a person's sky declaration always means (ADR 0014 amendment)."
+        applyId:
+          type: "string"
+          description: "Set when the declaration was copied from another dataset's by \"apply to the other runs\": the apply it belongs to (what an undo of that apply removes). Absent for a declaration made directly. Any later declaration of this dataset clears it."
+        appliedFrom:
+          type: "integer"
+          format: "int64"
+          description: "The dataset whose declaration this one was copied from. The basis stays the user's own declaration (declaredBy user, tier declared)."
+        appliedBy:
+          type: "string"
+          description: "The account that applied it."
     Dataset:
       type: "object"
       description: "A registered dataset: a reference to the original file plus header facts. The file itself is never altered."
@@ -24633,3 +24769,193 @@ components:
           $ref: "#/components/schemas/RelayGrantOffer"
         reason:
           type: "string"
+    ApplyReliability:
+      type: "object"
+      required:
+        - "datasetId"
+        - "name"
+      properties:
+        datasetId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+    ApplyRow:
+      type: "object"
+      description: "One candidate target. In a preview the outcome is what an apply would do (declare, skipped or refused); in an apply result it is what it did (declared, skipped or refused)."
+      required:
+        - "datasetId"
+        - "name"
+        - "runName"
+        - "outcome"
+        - "reliability"
+      properties:
+        datasetId:
+          type: "integer"
+          format: "int64"
+        name:
+          type: "string"
+        runName:
+          type: "string"
+        outcome:
+          type: "string"
+          enum:
+            - "declare"
+            - "declared"
+            - "skipped"
+            - "refused"
+        reason:
+          type: "string"
+          description: "Why a skipped or refused target was left alone: already declared (by whom), the file's own header states the convention, not a single plane, values beyond the declared unit, not in scope."
+        note:
+          type: "string"
+          description: "For a target that is declared: what is missing, such as no reliability output in its run."
+        reliability:
+          allOf:
+            - $ref: "#/components/schemas/ApplyReliability"
+          nullable: true
+          description: "The target's own run's reliability output that is paired with it; never the source's reliability map."
+    ApplyScope:
+      type: "object"
+      required:
+        - "scope"
+        - "label"
+        - "runs"
+      properties:
+        scope:
+          type: "string"
+          enum:
+            - "project"
+            - "folder"
+        label:
+          type: "string"
+          description: "The project's name, or the folder in words"
+        runs:
+          type: "integer"
+          description: "Other runs read with the same tool profile inside it"
+    ApplyPreview:
+      type: "object"
+      required:
+        - "eligible"
+        - "source"
+        - "scopes"
+        - "scope"
+        - "rows"
+        - "counts"
+      properties:
+        eligible:
+          type: "boolean"
+          description: "False when this dataset's declaration cannot be applied to other runs; reason says why"
+        reason:
+          type: "string"
+        source:
+          type: "object"
+          nullable: true
+          required:
+            - "datasetId"
+            - "name"
+            - "runName"
+            - "profile"
+            - "unit"
+            - "frame"
+            - "quantity"
+          properties:
+            datasetId:
+              type: "integer"
+              format: "int64"
+            name:
+              type: "string"
+            runName:
+              type: "string"
+            profile:
+              type: "string"
+              description: "The tool profile (name@version) the other runs must have been read with"
+            unit:
+              type: "string"
+              enum:
+                - "deg"
+                - "rad"
+            frame:
+              type: "string"
+              nullable: true
+              enum:
+                - "pixel"
+                - "sky"
+            quantity:
+              type: "string"
+              nullable: true
+        scopes:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ApplyScope"
+        scope:
+          type: "string"
+          description: "The scope the rows are listed for"
+        rows:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ApplyRow"
+        counts:
+          type: "object"
+          additionalProperties:
+            type: "integer"
+          description: "Rows by outcome"
+    ApplyRequest:
+      type: "object"
+      required:
+        - "sourceId"
+        - "scope"
+        - "targetIds"
+        - "confirm"
+      properties:
+        sourceId:
+          type: "integer"
+          format: "int64"
+        scope:
+          type: "string"
+          enum:
+            - "project"
+            - "folder"
+        targetIds:
+          type: "array"
+          maxItems: 5000
+          items:
+            type: "integer"
+            format: "int64"
+          description: "The datasets the preview listed; each is checked again on the server"
+        confirm:
+          type: "boolean"
+          description: "Must be true: declarations are written only on confirmation"
+    ApplyResult:
+      type: "object"
+      required:
+        - "applyId"
+        - "scope"
+        - "rows"
+        - "counts"
+      properties:
+        applyId:
+          type: "string"
+          description: "Names this apply, for the undo"
+        scope:
+          type: "string"
+        rows:
+          type: "array"
+          items:
+            $ref: "#/components/schemas/ApplyRow"
+        counts:
+          type: "object"
+          additionalProperties:
+            type: "integer"
+          description: "Rows by outcome"
+    ApplyUndoResult:
+      type: "object"
+      required:
+        - "applyId"
+        - "removed"
+      properties:
+        applyId:
+          type: "string"
+        removed:
+          type: "integer"
+          description: "Declarations removed: those of this apply that nobody edited or cleared since"

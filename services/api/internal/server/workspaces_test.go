@@ -569,6 +569,7 @@ var bodyIDRoutes = map[string]struct{ path, body string }{
 	"POST /api/subsets/{sid}":                   {"/api/subsets/{own:subsets/sid}", `{"regionId":{regions/id}}`},
 	"POST /api/reports":                         {"/api/reports", `{"title":"new","body":"","parent":{reports/id}}`},
 	"POST /api/datasets/{id}/overlay-geometry":  {"/api/datasets/{own:datasets/id}/overlay-geometry", `{"overlay":{"id":"o","kind":"contours","datasetId":{datasets/id},"visible":true,"channel":0,"levels":[1],"unit":"","color":"#fff"}}`},
+	"POST /api/interpretations/apply":           {"/api/interpretations/apply", `{"sourceId":{datasets/id},"scope":"project","targetIds":[{datasets/id}],"confirm":true}`},
 	// a location on a host: hosts are not on the group server, so any host id is refused
 	"POST /api/datasets/{id}/locations": {"/api/datasets/{own:datasets/id}/locations", `{"hostId":1,"path":"/a/x.fits"}`},
 	"POST /api/reports/{id}/move":       {"/api/reports/{own:reports/id}/move", `{"parent":{reports/id}}`},
