@@ -22,33 +22,22 @@ func (s *Store) RequestRef(id int64) (string, error) {
 	return ref, err
 }
 
-// SettingKind is the kind of an editable setting of a template ("number", "int", "enum", "path", ...), and false for a key the
-// template does not let a request set. A relayed request may never set a path-kind setting (ADR 0066 section 3).
+// SettingKind is the kind of an editable setting of a shipped template ("number", "int", "enum", "path", ...), and false for a key
+// the template does not let a request set. A relayed request may never set a path-kind setting (ADR 0066 section 3). Relayed
+// requests take the tools Vesqira ships a template for (vgt, rohsa).
 func SettingKind(template, key string) (string, bool) {
-	switch template {
-	case "vgt":
-		spec, ok := configKeys[key]
-		return spec.Kind, ok
-	case "rohsa":
-		if key == ROHSATied {
-			return "number", true
-		}
-		spec, ok := rohsaKeys[key]
-		if !ok || spec.Internal {
-			return "", false
-		}
-		return spec.Kind, true
+	t := ShippedTemplate(template)
+	if t == nil {
+		return "", false
 	}
-	return "", false
+	return KindOf(t, key)
 }
 
-// CheckTemplateSetting validates one setting with the template's own validator (CheckSetting or CheckROHSASetting).
+// CheckTemplateSetting validates one setting with the template's own validator.
 func CheckTemplateSetting(template, key, value string) error {
-	switch template {
-	case "vgt":
-		return CheckSetting(key, value)
-	case "rohsa":
-		return CheckROHSASetting(key, value)
+	t := ShippedTemplate(template)
+	if t == nil {
+		return fmt.Errorf("%w: template must be vgt or rohsa", ErrInvalid)
 	}
-	return fmt.Errorf("%w: template must be vgt or rohsa", ErrInvalid)
+	return CheckKey(t, key, value)
 }

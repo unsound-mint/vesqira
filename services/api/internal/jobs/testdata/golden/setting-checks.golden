@@ -55,8 +55,8 @@ vgt input_file path true
 vgt angle_frame enum true
 vgt output_bin posint true
 rohsa lambda number true
-rohsa n_gauss intlist true
+rohsa n_gauss int true
 rohsa output_dir  false
-rohsa memory_gb gb true
-rohsa spectral_kernel kernel true
+rohsa memory_gb number true
+rohsa spectral_kernel enum true
 rohsa nope  false

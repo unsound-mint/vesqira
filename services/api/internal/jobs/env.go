@@ -111,6 +111,19 @@ type EnvSpec struct {
 	// program starts. It costs one pass over the file on the compute node, so it is on only for a run that needs the input's
 	// identity as the job saw it (a configuration run on another cube). Never in probe mode.
 	HashInput bool
+	// NoJulia leaves out the Julia probes (the Manifest.toml hash and the julia version) of a tool whose profile declares none; the
+	// facts are then reported unresolved with that reason, never recorded for an interpreter the job does not use.
+	NoJulia bool
+}
+
+// collectorFor is the collector text for a spec: the full one, or without the Julia probes.
+func collectorFor(noJulia bool) string {
+	if !noJulia {
+		return envCollector
+	}
+	c := strings.Replace(envCollector, "  else ve_code \"$1\"; ve_manifest \"$1\"; fi\n", "  else ve_code \"$1\"; ve_no julia.manifest_sha256 \"this tool's profile declares no Julia probe\"; fi\n", 1)
+	const julia = "  if command -v julia >/dev/null 2>&1; then\n    v=$(ve_t julia --version 2>/dev/null | head -n 1)\n    if [ -n \"$v\" ]; then ve_ok julia.version \"$v\"; else ve_no julia.version \"julia did not report a version\"; fi\n  else ve_no julia.version \"julia is not on PATH at this point of the script\"; fi\n"
+	return strings.Replace(c, julia, "  ve_no julia.version \"this tool's profile declares no Julia probe\"\n", 1)
 }
 
 func plainPath(p string) string {
@@ -130,7 +143,7 @@ func EnvPreamble(e EnvSpec) string {
 	fmt.Fprintf(&b, "ve_out=\"%s\"\nve_file=\"$jobdir/vesqira-env.json\"\n", plainPath(e.OutputDir))
 	b.WriteString("ve_copy() { [ -n \"$ve_out\" ] && [ -d \"$ve_out\" ] && [ ! -L \"$ve_out\" ] && [ ! -L \"$ve_out/vesqira-env.json\" ] && [ -f \"$ve_file\" ] && cp -f \"$ve_file\" \"$ve_out/vesqira-env.json\" 2>/dev/null; return 0; }\n")
 	b.WriteString("(\n  set +e +u\n  ve_emit() { printf '%s|%s|%s\\n' \"$1\" \"$2\" \"$3\"; }\n")
-	b.WriteString(envCollector)
+	b.WriteString(collectorFor(e.NoJulia))
 	hash := ""
 	if e.HashInput {
 		hash = " full"

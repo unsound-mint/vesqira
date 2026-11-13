@@ -36,9 +36,10 @@ var allowed = map[string][]string{
 	"boards":        {"schema", "workspace"},
 	"reports":       {"publish", "schema", "workspace"},
 	"catalog":       {"identity", "schema", "workspace"},
-	"jobs":          {"schema", "workspace"},
+	"jobs":          {"jobtemplate", "runs", "schema", "workspace"}, // job scripts render from a tool profile's template (ADR 0068 slice 5)
+	"jobtemplate":   {},
 	"sweeps":        {"schema", "workspace"},
-	"runs":          {"schema", "workspace"},
+	"runs":          {"jobtemplate", "schema", "workspace"},
 	"runs/runstest": {"runs"}, // test helper: only _test.go files import it
 	"discover":      {"runs", "sourceroot"},
 	"projects":      {"discover", "schema", "workspace"},

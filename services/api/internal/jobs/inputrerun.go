@@ -4,10 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/jobtemplate"
 )
 
 // Run a recorded configuration on another input cube (ADR 0014 amendment, issue 121). The draft is rendered from the
@@ -45,46 +46,25 @@ type RerunInputIdentity struct {
 	FullSHA256 string `json:"fullSha256"` // SHA-256 of every byte, when the catalog has one for this size and time
 }
 
-// InputKey is the config key that names the input cube: "input_file" in a VGT config, "input" in a ROHSA config (the
-// pipeline's two config formats differ here).
-func InputKey(template string) string {
-	if template == "rohsa" {
-		return "input"
+// templateFor is the shipped template of a job template id; an unknown id reads as the VGT one, as the helpers below always did.
+func templateFor(id string) *jobtemplate.Template {
+	if t := ShippedTemplate(id); t != nil {
+		return t
 	}
-	return "input_file"
+	return vgtTemplate()
 }
 
+// InputKey is the config key that names the input cube: "input_file" in a VGT config, "input" in a ROHSA config (the
+// pipeline's two config formats differ here). It is the profile's template that says which.
+func InputKey(template string) string { return templateFor(template).Config.InputKey }
+
 // InputPathOf is the input cube path a config names, or "" when it names none that is a string.
-func InputPathOf(template, config string) string {
-	var cfg struct {
-		Input map[string]any `toml:"input"`
-	}
-	if _, err := toml.Decode(config, &cfg); err != nil {
-		return ""
-	}
-	s, _ := cfg.Input[InputKey(template)].(string)
-	return s
-}
+func InputPathOf(template, config string) string { return InputPathFor(templateFor(template), config) }
 
 // SetInputFile returns config text with the input path replaced and nothing else changed (the other lines stay byte for byte).
 // The result is read back and must name the path, so a layout this line editor cannot follow is refused, not guessed at.
 func SetInputFile(template, text, path string) (string, error) {
-	if !ValidPath(path) {
-		return "", fmt.Errorf("%w: the input file must be an absolute path without spaces or quotes", ErrInvalid)
-	}
-	var out string
-	if template == "rohsa" {
-		out = strings.Join(setROHSALine(strings.Split(text, "\n"), "input", "input", `"`+path+`"`), "\n")
-	} else {
-		var err error
-		if out, err = SetConfigValues(text, map[string]string{"input_file": path}); err != nil {
-			return "", err
-		}
-	}
-	if InputPathOf(template, out) != path {
-		return "", fmt.Errorf("%w: the input line of the config could not be replaced (is it written over several lines?)", ErrInvalid)
-	}
-	return out, nil
+	return SetInputPath(templateFor(template), text, path)
 }
 
 // pathKeys are config keys that name where a run reads or writes, not what it computes. They are left out of the hash: two
@@ -100,22 +80,18 @@ func ConfigHash(template string, req VGTRequest) (string, bool) {
 	if strings.TrimSpace(req.BaseConfigText) == "" {
 		return "", false
 	}
-	set := map[string]string{}
-	for k, v := range req.Set {
-		set[k] = v
-	}
-	var text string
-	var err error
-	switch template {
-	case "vgt":
-		delete(set, "output_dir") // Vesqira's own per job; never part of the configuration
-		delete(set, "input_file")
-		text, err = SetConfigValues(req.BaseConfigText, set)
-	case "rohsa":
-		text, err = SetROHSAConfig(req.BaseConfigText, set, "")
-	default:
+	t := ShippedTemplate(template)
+	if t == nil {
 		return "", false
 	}
+	set := map[string]string{}
+	for k, v := range req.Set {
+		if spec := t.Key(k); spec != nil && spec.Kind == jobtemplate.KindPath {
+			continue // where a run reads or writes is not part of the configuration (output_dir is Vesqira's own per job)
+		}
+		set[k] = v
+	}
+	text, err := SetConfig(t, req.BaseConfigText, set, "")
 	if err != nil {
 		return "", false
 	}

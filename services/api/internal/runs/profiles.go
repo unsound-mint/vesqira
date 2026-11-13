@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/unsound-mint/vesqira/services/api/internal/jobtemplate"
 )
 
 // Tool profiles for runs (ADR 0068, item 1): which tool wrote a folder, recognised by a file and a key inside it, and which of
@@ -58,8 +60,10 @@ type Profile struct {
 	Outputs     *OutputSpec         `json:"outputs"`
 	// Decomposition declares where the tool writes per-pixel Gaussian components and what each field means (slice 4).
 	Decomposition *Decomposition `json:"decomposition"`
-	recordRe      *regexp.Regexp `json:"-"`
-	fileRe        map[string]*regexp.Regexp
+	// Template is how a Slurm job of the tool is written (slice 5). Its id is what jobs.template holds.
+	Template *jobtemplate.Template `json:"template"`
+	recordRe *regexp.Regexp        `json:"-"`
+	fileRe   map[string]*regexp.Regexp
 }
 
 // RecordSpec is how a run of the tool is recognised: a record file (by name or by pattern) and, inside it, a key.
@@ -150,6 +154,15 @@ func LoadProfiles(data []byte) (*Registry, error) {
 			return nil, fmt.Errorf("run profile %s: %w", p.Label(), err)
 		}
 	}
+	ids := map[string]string{}
+	for _, p := range reg.profiles {
+		if p.Template != nil {
+			if other, dup := ids[p.Template.ID]; dup {
+				return nil, fmt.Errorf("run profile %s: the job template id %q is already used by %s", p.Label(), p.Template.ID, other)
+			}
+			ids[p.Template.ID] = p.Label()
+		}
+	}
 	for _, p := range reg.profiles {
 		if p.Components != "" && reg.ByName(p.Components) == nil {
 			return nil, fmt.Errorf("run profile %s: components names the unknown profile %q", p.Label(), p.Components)
@@ -159,6 +172,11 @@ func LoadProfiles(data []byte) (*Registry, error) {
 }
 
 func (p *Profile) compile(reg *Registry) error {
+	if p.Template != nil {
+		if err := p.Template.Compile(); err != nil {
+			return fmt.Errorf("template: %w", err)
+		}
+	}
 	if d := p.Decomposition; d != nil {
 		if err := d.compile(); err != nil {
 			return fmt.Errorf("decomposition: %w", err)
@@ -269,6 +287,9 @@ func (r *Registry) With(data []byte) (*Registry, error) {
 		if out.ByLabel(p.Label()) != nil {
 			return nil, fmt.Errorf("run profile %s is already defined", p.Label())
 		}
+		if p.Template != nil && out.TemplateByID(p.Template.ID) != nil {
+			return nil, fmt.Errorf("run profile %s: the job template id %q is already defined", p.Label(), p.Template.ID)
+		}
 		out.profiles = append(out.profiles, p)
 	}
 	return out, nil
@@ -310,6 +331,39 @@ func (r *Registry) ByLabel(label string) *Profile {
 		}
 	}
 	return nil
+}
+
+// TemplateByID is the job template whose id is id (what jobs.template holds), with the profile that declares it; nil for none.
+func (r *Registry) TemplateByID(id string) *jobtemplate.Template {
+	t, _ := r.TemplateProfile(id)
+	return t
+}
+
+// TemplateProfile is TemplateByID with the profile label (name@version) of the template's profile.
+func (r *Registry) TemplateProfile(id string) (*jobtemplate.Template, string) {
+	for _, p := range r.profiles {
+		if p.Template != nil && p.Template.ID == id {
+			return p.Template, p.Label()
+		}
+	}
+	return nil, ""
+}
+
+// Templates lists the job templates in profile order, each with its profile label.
+func (r *Registry) Templates() []TemplateEntry {
+	var out []TemplateEntry
+	for _, p := range r.profiles {
+		if p.Template != nil {
+			out = append(out, TemplateEntry{Profile: p.Label(), Template: p.Template})
+		}
+	}
+	return out
+}
+
+// TemplateEntry is a job template with the label of the profile that declares it.
+type TemplateEntry struct {
+	Profile  string
+	Template *jobtemplate.Template
 }
 
 // RoleLabel is the plain name of a generic role, or "" for an id that is not one.
