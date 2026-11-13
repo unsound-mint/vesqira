@@ -17,6 +17,7 @@ const (
 	GrantStateWaiting = "waiting" // the grant's jobs-at-once limit is full; tried again each pass
 	GrantStatePending = "pending" // the group server did not answer the claim; tried again each pass
 	GrantStateUsed    = "used"    // submitted under the grant
+	GrantStateStopped = "stopped" // claimed on the group server, then not submitted (the draft changed, the grant was revoked, Slurm was never reached); the note says why
 )
 
 // GrantFallback reports a grant state that is a code: the request waits for the key holder.
@@ -237,6 +238,21 @@ func (l *Local) OpenUses() ([]Use, error) {
 func (l *Local) EndUse(id int64) error {
 	_, err := l.db.Exec(`UPDATE relay_grant_uses SET ended_at=? WHERE id=? AND ended_at IS NULL`, l.now(), id)
 	return err
+}
+
+// EndUseOf frees the jobs-at-once slot of the use a request took, for a request whose submission was refused before anything was
+// sent to Slurm. As with EndUse, the job and its core-hours stay counted: the claim on the group server was made.
+func (l *Local) EndUseOf(relayedID int64) error {
+	_, err := l.db.Exec(`UPDATE relay_grant_uses SET ended_at=? WHERE relayed_id=? AND ended_at IS NULL`, l.now(), relayedID)
+	return err
+}
+
+// Resubmits are the requests a standing approval claimed and reserved a slot for whose submission was refused for now (too many
+// jobs already queued or running from here): approved, still holding their use, and in the pending state with their grant id set.
+// A request waiting for the group server's answer to the claim has no grant id yet, so it is never in this list.
+func (l *Local) Resubmits(origin string) ([]Mirrored, error) {
+	return l.query(`SELECT `+mirrorCols+` FROM relayed_requests WHERE origin=? AND local_state=? AND grant_state=? AND grant_id!='' ORDER BY id LIMIT 200`,
+		origin, LocalApproved, GrantStatePending)
 }
 
 // SetGrantState records what this computer decided about the grant a request named, and why it waits for the key holder.
