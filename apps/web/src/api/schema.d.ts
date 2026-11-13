@@ -3298,6 +3298,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{id}/answers/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer every open missing-BUNIT question under a folder at once (preview, then confirm). Each is recorded as the researcher's own, with the folder tree as its scope; answered questions are not overwritten */
+        post: operations["owner_s_answerTree_post_api_projects_id_answers_tree"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{id}/import/apply": {
         parameters: {
             query?: never;
@@ -12746,6 +12765,38 @@ export interface components {
             grant?: components["schemas"]["RelayGrantOffer"];
             reason: string;
         };
+        /** @description Answers every open 'FITS files without BUNIT' question under a folder with the same answer. Without confirm it only counts what the answer would reach. */
+        TreeAnswerRequest: {
+            /** @description Relative to the project folder, slash-separated; "." is the whole project. The questions it reaches are derived on the server, never taken from the request. */
+            folder: string;
+            /** @enum {string} */
+            answer: "declare" | "unknown";
+            /** @description The unit, for declare (1 to 40 printable characters, as typed); empty for unknown. */
+            value?: string;
+            /** @description false (the default) is a preview: nothing is changed. */
+            confirm?: boolean;
+            /** @description Also create .vesqira/project.toml when it does not exist yet (it is appended to when it does). */
+            write?: boolean;
+        };
+        /** @description What a folder-tree answer reaches (preview) or reached (applied). Each folder's answer is stored as declared by the researcher for the folder tree, not per file; questions that already had an answer are left as they were. */
+        TreeAnswer: {
+            folder: string;
+            applied: boolean;
+            /** @description Open questions (folders) reached; after applying, the ones answered. */
+            folders: number;
+            /** @description Files in those folders with no BUNIT and no unit yet. */
+            files: number;
+            /** @description The first folders reached, at most 20. */
+            sample: string[];
+            /** @description Questions under the folder that already had an answer and were not touched. */
+            answered: number;
+            writtenToProject: boolean;
+            note?: string;
+            /** @description Questions still open in the project. */
+            open: number;
+            /** @description Folders whose answer could not be applied; answering again retries them. */
+            failed?: string[];
+        };
     };
     responses: never;
     parameters: never;
@@ -19242,6 +19293,68 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_answerTree_post_api_projects_id_answers_tree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TreeAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description ok */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TreeAnswer"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the project file could not be written */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description not a folder inside the project, or not an answer a folder tree takes, or an invalid unit */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

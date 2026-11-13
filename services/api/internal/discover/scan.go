@@ -80,6 +80,7 @@ type Skipped struct {
 	Archives     []string `json:"archives"`  // archive files, listed and never opened (capped)
 	ArchiveCount int      `json:"archiveCount"`
 	ArchiveBytes int64    `json:"archiveBytes"`
+	ToolEnvs     int      `json:"toolEnvs"` // folders skipped as tool environments (venv, conda env, Julia depot, node_modules, site-packages); counted, not listed
 }
 
 type Git struct {
@@ -359,6 +360,10 @@ func (s *scanner) budget() bool {
 }
 
 func (s *scanner) skippedDir(rel, name string) (string, bool) {
+	if IsToolEnvName(name) {
+		s.res.Skipped.ToolEnvs++
+		return "skip", true
+	}
 	for _, n := range SkipNames {
 		if name == n {
 			return "skip", true
@@ -394,6 +399,10 @@ func (s *scanner) walk(dir string, in *runCtx) int {
 		return 0
 	}
 	sort.Slice(ents, func(i, j int) bool { return ents[i].Name < ents[j].Name })
+	if dir != "" && isToolEnvListing(ents) { // a venv, conda env or Julia depot under any name: none of it is the project's
+		s.res.Skipped.ToolEnvs++
+		return 0
+	}
 	s.res.Entries += len(ents)
 	if s.opt.Progress != nil {
 		s.opt.Progress(s.res.Entries, dir)
@@ -419,8 +428,12 @@ func (s *scanner) walk(dir string, in *runCtx) int {
 			continue
 		}
 		if e.Dir && !e.Link {
+			if e.ToolEnv { // the host's worker recognised it and did not list it
+				s.res.Skipped.ToolEnvs++
+				continue
+			}
 			if _, skip := s.skippedDir(rel, e.Name); skip {
-				if !strings.HasPrefix(e.Name, ".vesqira") {
+				if !strings.HasPrefix(e.Name, ".vesqira") && !IsToolEnvName(e.Name) {
 					s.res.Skipped.Dirs = append(s.res.Skipped.Dirs, rel)
 				}
 				continue
@@ -446,6 +459,18 @@ func (s *scanner) walk(dir string, in *runCtx) int {
 		s.res.ResultLike = append(s.res.ResultLike, dir)
 	}
 	return n
+}
+
+func isToolEnvListing(ents []Entry) bool {
+	dirs, files := map[string]bool{}, map[string]bool{}
+	for _, e := range ents {
+		if e.Dir && !e.Link {
+			dirs[e.Name] = true
+		} else if !e.Dir {
+			files[e.Name] = true
+		}
+	}
+	return IsToolEnvDir(dirs, files)
 }
 
 func neverRead(e Entry) bool {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -126,15 +128,12 @@ func TestVGTLikeProject(t *testing.T) {
 	if len(b.Differs) != 1 || b.Differs[0].Value != "0.9" {
 		t.Fatalf("differs b: %+v", b.Differs)
 	}
-	// skipped by the always-list and by the project's own pattern; never walked
-	for _, p := range []string{"node_modules", ".venv"} {
-		found := false
-		for _, d := range r.Skipped.Dirs {
-			found = found || d == p
-		}
-		if !found {
-			t.Fatalf("%s not reported as skipped: %v", p, r.Skipped.Dirs)
-		}
+	// node_modules and .venv are tool environments: counted in the summary line, not listed; the project's own pattern is listed
+	if r.Skipped.ToolEnvs != 2 {
+		t.Fatalf("tool environments skipped: %d, want 2", r.Skipped.ToolEnvs)
+	}
+	if !slices.Contains(r.Skipped.Dirs, "old") {
+		t.Fatalf("old not reported as skipped: %v", r.Skipped.Dirs)
 	}
 	for _, d := range r.Data {
 		if strings.HasPrefix(d.Path, "old/") || strings.Contains(d.Path, "node_modules") || strings.Contains(d.Path, ".venv") {
@@ -523,5 +522,39 @@ func TestROHSATraceIsARunRecord(t *testing.T) {
 		if strings.Contains(v, "/") || k == "rohsa_output" || k == "config_path" {
 			t.Fatalf("a location leaked: %s=%s", k, v)
 		}
+	}
+}
+
+func TestToolEnvironmentsAreSkippedUnderAnyName(t *testing.T) {
+	root := canonical(t)
+	write(t, root, "data/raw/a.fits", "x")
+	write(t, root, ".venv-irgetas-py/pyvenv.cfg", "home = /usr/bin")
+	write(t, root, ".venv-irgetas-py/lib/python3.9/site-packages/astropy/tests/data/b.fits", "x")
+	write(t, root, "envs/conda1/conda-meta/history", "x")
+	write(t, root, "envs/conda1/lib/c.fits", "x")
+	write(t, root, ".julia-irgetas/registries/General/Registry.toml", "x")
+	write(t, root, ".julia-irgetas/packages/Foo/d.fits", "x")
+	write(t, root, "depot/registries/r", "x") // a depot under a plain name, recognised by its two folders
+	write(t, root, "depot/packages/Foo/e.fits", "x")
+	write(t, root, "half/packages/f.fits", "x") // packages/ alone is not a depot: it is data
+	write(t, root, "src/site-packages/g.fits", "x")
+	write(t, root, ".julia/h.fits", "x")
+	r := scan(t, LocalFS{Root: root}, Options{MaxEntries: 10000, MaxDuration: time.Minute})
+	got := paths(r.Data)
+	sort.Strings(got)
+	eq(t, "data walked", got, []string{"data/raw/a.fits", "half/packages/f.fits"})
+	if r.Skipped.ToolEnvs != 6 {
+		t.Fatalf("tool environments: %d, want 6 (venv, conda, .julia-*, depot, site-packages, .julia)", r.Skipped.ToolEnvs)
+	}
+}
+
+// A host's worker recognises an environment from its listing and reports it as a leaf with the env flag.
+func TestWorkerFlaggedToolEnvironmentIsCounted(t *testing.T) {
+	m := NewMemFS(nil)
+	m.Add("a.fits", Entry{Size: 1})
+	m.Add("env1", Entry{Dir: true, ToolEnv: true})
+	r := scan(t, m, Options{MaxEntries: 100, MaxDuration: time.Minute})
+	if r.Skipped.ToolEnvs != 1 || len(r.Skipped.Dirs) != 0 {
+		t.Fatalf("skipped: %+v", r.Skipped)
 	}
 }

@@ -145,6 +145,7 @@ type counts struct {
 		Bytes int64 `json:"bytes"`
 	} `json:"archives"`
 	SkippedDirs int `json:"skippedDirs"`
+	ToolEnvs    int `json:"toolEnvs"` // folders skipped as tool environments (venv, conda env, Julia depot, node_modules)
 	NeverRead   int `json:"neverRead"`
 	RoleRaw     int `json:"roleRaw"` // data files in a raw or external folder (read-only inputs)
 }
@@ -251,6 +252,7 @@ func summarize(r *discover.Result) storedSummary {
 	sum.Counts.DataFolders, sum.Counts.OtherFiles = r.DataFolders, r.OtherFiles
 	sum.Counts.Archives.Count, sum.Counts.Archives.Bytes = r.Skipped.ArchiveCount, r.Skipped.ArchiveBytes
 	sum.Counts.SkippedDirs, sum.Counts.NeverRead = len(r.Skipped.Dirs), len(r.Skipped.NeverRead)
+	sum.Counts.ToolEnvs = r.Skipped.ToolEnvs
 	sum.Git, sum.Truncated, sum.TruncatedWhy, sum.Entries, sum.Notes = r.Git, r.Truncated, r.TruncatedWhy, r.Entries, append([]string{}, r.Notes...)
 	sum.ResultLike = append([]string{}, r.ResultLike...)
 	sum.Links.Examples = []discover.Link{}

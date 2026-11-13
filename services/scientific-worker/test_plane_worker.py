@@ -769,6 +769,11 @@ class ProjectWalk(unittest.TestCase):
         for d in ("data/raw", "node_modules/pkg", ".git/objects", "blind_set_key", "old/x", "cube.zarr/0", "results"):
             (cls.root / d).mkdir(parents=True)
         cls.other.mkdir()
+        for d in ("envs/py/lib", "envs/conda/conda-meta", "depot/registries", "depot/packages", "half_depot/packages"):
+            (cls.root / d).mkdir(parents=True)
+        (cls.root / "envs/py/pyvenv.cfg").write_text("home = /usr/bin")
+        (cls.root / "envs/py/lib/x.py").write_text("x")
+        (cls.root / "half_depot/packages/a.jl").write_text("x")
         for f in ("data/raw/a.fits", "node_modules/pkg/x.js", ".git/HEAD", "blind_set_key/key.csv", "old/x/y.fits", "cube.zarr/0/c",
                   "results/run.json", "results/key_DO_NOT_OPEN.csv", "z.txt"):
             (cls.root / f).write_text("x")
@@ -803,6 +808,16 @@ class ProjectWalk(unittest.TestCase):
         self.assertEqual(by["data/raw/a.fits"]["size"], 1)
         # a file marked as not to be opened is named, and nothing else about it is looked at
         self.assertEqual(by["results/key_DO_NOT_OPEN.csv"], {"p": "results/key_DO_NOT_OPEN.csv", "never": True})
+
+    def test_tool_environments_are_flagged_and_not_entered_under_any_name(self):
+        by = {e["p"]: e for e in self.full()["entries"]}
+        for p in ("envs/py", "envs/conda", "depot"):               # pyvenv.cfg, conda-meta/, registries/ + packages/
+            self.assertEqual(by[p], {"p": p, "dir": True, "leaf": True, "env": True}, p)
+        for p in by:
+            self.assertFalse(p.startswith(("envs/py/", "envs/conda/", "depot/")), p)
+        self.assertNotIn("env", by["half_depot"])                   # packages/ alone is not a Julia depot
+        self.assertIn("half_depot/packages/a.jl", by)
+        self.assertNotIn("env", by["data"])
 
     def test_links_are_classified_and_never_followed(self):
         by = {e["p"]: e for e in self.full()["entries"]}

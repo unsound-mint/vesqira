@@ -31,11 +31,12 @@ export function summaryLines(p: ProjectSummary): Line[] {
       : { label: "Code", value: "no version control", from: "no .git folder in the project", warn: true },
   );
   const skipped = [
+    (c.toolEnvs ?? 0) > 0 ? `${num(c.toolEnvs ?? 0)} tool environment${c.toolEnvs === 1 ? "" : "s"} (Python, conda, Julia, node)` : "",
     c.skippedDirs > 0 ? `${num(c.skippedDirs)} folder${c.skippedDirs === 1 ? "" : "s"}` : "",
     c.archives.count > 0 ? `${num(c.archives.count)} archive${c.archives.count === 1 ? "" : "s"} (${bytes(c.archives.bytes)})` : "",
     c.neverRead > 0 ? `${num(c.neverRead)} never-read name${c.neverRead === 1 ? "" : "s"}` : "",
   ].filter(Boolean);
-  lines.push({ label: "Skipped", value: skipped.length ? skipped.join(" · ") : "nothing", from: "skip rules (.git, .venv, caches, your skip globs); archives are listed, not opened; never-read names are not read" });
+  lines.push({ label: "Skipped", value: skipped.length ? skipped.join(" · ") : "nothing", from: "skip rules (.git, .venv, conda and Julia environments, caches, your skip globs); archives are listed, not opened; never-read names are not read" });
   const l = p.links;
   if (l.outside > 0 || l.dangling > 0) {
     const eg = l.examples.filter((e) => e.state !== "inside").slice(0, 3).map((e) => `${e.path} (${e.state === "outside" ? "points outside" : "dangling"})`).join(", ");

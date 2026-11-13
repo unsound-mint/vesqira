@@ -10,7 +10,29 @@ import (
 )
 
 // SkipNames are folders that are never walked, in any project.
-var SkipNames = []string{".git", ".venv", "venv", "node_modules", "__pycache__", ".cache", ".tox", ".mypy_cache", ".ipynb_checkpoints", ".vesqira", ".vesqira-partial"}
+var SkipNames = []string{".git", ".venv", "venv", "node_modules", "site-packages", ".julia", "__pycache__", ".cache", ".tox", ".mypy_cache", ".ipynb_checkpoints", ".vesqira", ".vesqira-partial"}
+
+// ToolEnvNames are folders that hold a tool's own files, never the project's data. ".julia-*" (a depot per project) is
+// matched by IsToolEnvName, not listed here. Skipped folders of these names, and folders recognised by IsToolEnvDir, are
+// counted together as tool environments in the scan summary.
+var ToolEnvNames = []string{".venv", "venv", "node_modules", "site-packages", "__pycache__", ".julia"}
+
+// IsToolEnvName says whether a folder name alone marks a tool environment.
+func IsToolEnvName(name string) bool {
+	for _, n := range ToolEnvNames {
+		if name == n {
+			return true
+		}
+	}
+	return strings.HasPrefix(name, ".julia-")
+}
+
+// IsToolEnvDir says, from the names a folder holds, whether it is a Python venv (pyvenv.cfg), a conda environment
+// (conda-meta/) or a Julia depot (registries/ and packages/). dirs and files are the names of its subfolders and files.
+// The host's worker applies the same rule (plane_worker.py, _tool_env).
+func IsToolEnvDir(dirs, files map[string]bool) bool {
+	return files["pyvenv.cfg"] || dirs["conda-meta"] || (dirs["registries"] && dirs["packages"])
+}
 
 // NeverFiles and NeverDirs are name patterns (matched case-insensitively against one name) for things that are never
 // read, statted or descended into: a blinding key or anything its owner marked as not to be opened. They are sent to

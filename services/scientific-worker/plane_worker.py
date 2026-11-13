@@ -795,12 +795,20 @@ def _skip_glob(globs: list, rel: str) -> bool:
     return False
 
 
+def _tool_env(path: str) -> bool:
+    """A Python venv (pyvenv.cfg), a conda env (conda-meta/) or a Julia depot (registries/ and packages/): a tool's own
+    files, never the project's data. The caller's scan applies the same rule (discover.IsToolEnvDir)."""
+    def isdir(n):
+        return os.path.isdir(os.path.join(path, n))
+    return os.path.isfile(os.path.join(path, "pyvenv.cfg")) or isdir("conda-meta") or (isdir("registries") and isdir("packages"))
+
+
 def walk_page(req: dict) -> dict:
     """One page of a depth-first, name-sorted walk of a project folder, for the caller's discovery.
 
     The folder must lie inside the roots (the caller adds it to them when the project is opened). Symbolic links are
     never followed: a link is reported as inside, outside the folder, or dangling. The caller's rules arrive with the
-    request and are applied before anything is statted: names in skip_names and folders matching skip_globs are
+    request and are applied before anything is statted: names in skip_names, tool environments (see _tool_env; flagged "env") and folders matching skip_globs are
     reported but not entered; names matching never_files / never_dirs are reported by name only (not statted, not
     read, not entered); folders ending in a leaf_dir_suffixes entry (such as .zarr) are reported and not entered.
     `after` is the path of the last entry of the previous page; the walk resumes right after it."""
@@ -862,6 +870,10 @@ def walk_page(req: dict) -> dict:
                     return
                 continue
             if is_dir:
+                if not _match_any(never_dirs, name) and name not in skip_names and _tool_env(e.path):
+                    if emit(rel, {"dir": True, "leaf": True, "env": True}):   # reported, not entered: the caller counts it
+                        return
+                    continue
                 never = _match_any(never_dirs, name)
                 if never or name in skip_names or _skip_glob(skip_globs, rel) or name.lower().endswith(tuple(leaf)):
                     if emit(rel, {"dir": True, "leaf": True}):
@@ -891,7 +903,7 @@ def walk_page(req: dict) -> dict:
         except OSError:
             return False
         rel = rel_dir + "/" + name if rel_dir else name
-        return not (_match_any(never_dirs, name) or name in skip_names or _skip_glob(skip_globs, rel) or name.lower().endswith(tuple(leaf)))
+        return not (_match_any(never_dirs, name) or name in skip_names or _skip_glob(skip_globs, rel) or name.lower().endswith(tuple(leaf)) or _tool_env(e.path))
 
     rec(root, "", [x for x in after.split("/") if x])
     return {"ok": True, "op": "walk", "nbytes": 0, "root": root, "entries": out,

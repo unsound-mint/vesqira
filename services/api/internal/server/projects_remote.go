@@ -71,6 +71,7 @@ func (s *Server) walkRemote(ctx context.Context, h hosts.Host, root string, glob
 				Leaf    bool   `json:"leaf"`
 				Link    string `json:"link"`
 				Never   bool   `json:"never"`
+				Env     bool   `json:"env"`
 				Size    int64  `json:"size"`
 				MtimeNS int64  `json:"mtime_ns"`
 			} `json:"entries"`
@@ -80,7 +81,7 @@ func (s *Server) walkRemote(ctx context.Context, h hosts.Host, root string, glob
 			return false, "", errors.New("the host answered unexpectedly")
 		}
 		for _, e := range page.Entries {
-			en := discover.Entry{Dir: e.Dir, Size: e.Size, MtimeNS: e.MtimeNS}
+			en := discover.Entry{Dir: e.Dir, Size: e.Size, MtimeNS: e.MtimeNS, ToolEnv: e.Env}
 			if e.Link != "" {
 				en.Dir, en.Link = false, true
 				en.LinkOutside, en.LinkDangling = e.Link == "outside", e.Link == "dangling"
