@@ -74,6 +74,32 @@ func TestProjectProfileRefusals(t *testing.T) {
 		}), "longer than"},
 		{"a label that is too long", mutate(t, func(p map[string]any) { p["label"] = strings.Repeat("x", 81) }), "too long"},
 		{"a component link to nobody", mutate(t, func(p map[string]any) { p["components"] = "Nobody" }), "unknown profile"},
+		{"a worker convention name it cannot reach", mutate(t, func(p map[string]any) { p["orientation"] = "VGT.jl" }), "cannot reach"},
+		{"an orientation with an unknown field", mutate(t, func(p map[string]any) {
+			p["orientation"] = map[string]any{"frame": "pixel", "unit": "deg", "statistics": "axial", "epoch": "J2000"}
+		}), "unknown field"},
+		{"an orientation frame outside the vocabulary", mutate(t, func(p map[string]any) {
+			p["orientation"] = map[string]any{"frame": "galactic", "unit": "deg", "statistics": "axial"}
+		}), "orientation.frame"},
+		{"an orientation with no unit", mutate(t, func(p map[string]any) {
+			p["orientation"] = map[string]any{"frame": "pixel", "statistics": "axial"}
+		}), "orientation.unit"},
+		{"a directional orientation, which cannot be carried", mutate(t, func(p map[string]any) {
+			p["orientation"] = map[string]any{"frame": "pixel", "unit": "deg", "statistics": "directional"}
+		}), "directional"},
+		{"an orientation with no statistics", mutate(t, func(p map[string]any) {
+			p["orientation"] = map[string]any{"frame": "pixel", "unit": "deg"}
+		}), "orientation.statistics"},
+		{"another zero point than the frame's", mutate(t, func(p map[string]any) {
+			p["orientation"] = map[string]any{"frame": "pixel", "unit": "deg", "statistics": "axial", "zero_direction": "north"}
+		}), "zero point"},
+		{"another sense than the frame's", mutate(t, func(p map[string]any) {
+			p["orientation"] = map[string]any{"frame": "sky", "unit": "deg", "statistics": "axial", "sense": "clockwise"}
+		}), "direction"},
+		{"an orientation with no output to apply it to", mutate(t, func(p map[string]any) {
+			p["orientation"] = map[string]any{"frame": "pixel", "unit": "deg", "statistics": "axial"}
+			p["outputs"].(map[string]any)["files"].(map[string]any)["o"] = map[string]any{"product": "m", "role": "reliability"}
+		}), "no output with the role"},
 		{"larger than the bound", hogFile + strings.Repeat(" ", MaxProjectProfileBytes), "larger than"},
 	}
 	for _, c := range cases {
@@ -81,6 +107,25 @@ func TestProjectProfileRefusals(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: error %v, want one naming %q", c.name, err, c.want)
 		}
+	}
+}
+
+func TestProjectProfileOrientationIsReadAndKeptAsDeclared(t *testing.T) {
+	file := mutate(t, func(p map[string]any) {
+		p["orientation"] = map[string]any{"frame": "sky", "unit": "deg", "statistics": "axial", "quantity": "b_field", "zero_direction": "north", "sense": "east of north"}
+	})
+	_, p, err := Shipped().WithProject([]byte(file), "a.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := p.Orientation.Decl; d == nil || d.Frame != "sky" || d.Unit != "deg" || d.Statistics != "axial" || d.Quantity != "b_field" || p.Orientation.Worker != "" {
+		t.Fatalf("orientation %+v", p.Orientation)
+	}
+	if !strings.Contains(p.Orientation.Decl.Text(), "east of north") {
+		t.Errorf("text %q", p.Orientation.Decl.Text())
+	}
+	if v := Shipped().ByName("VGT.jl"); v.Orientation.Worker != "VGT.jl" || v.Orientation.Decl != nil {
+		t.Errorf("the shipped profile still names the worker's convention")
 	}
 }
 

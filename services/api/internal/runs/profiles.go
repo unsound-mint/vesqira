@@ -51,9 +51,10 @@ type Profile struct {
 	Kind   string `json:"kind"`
 	Tool   string `json:"label"` // the tool's plain name in messages ("VGT"), a label and nothing else
 	Source string `json:"source"`
-	// Orientation names the entry of the worker's orientation_profiles.json that reads this tool's header cards; Components names
+	// Orientation is the name of the entry of the worker's orientation_profiles.json that reads this tool's header cards (shipped
+	// profiles), or the convention a project profile declares for files that carry no such cards (orientation.go). Components names
 	// the profile whose component table this one's runs use.
-	Orientation string              `json:"orientation"`
+	Orientation OrientationRef      `json:"orientation"`
 	Components  string              `json:"components"`
 	Record      *RecordSpec         `json:"record"`
 	Files       map[string]FileSpec `json:"files"`
@@ -675,6 +676,16 @@ func (p *Profile) Products() []OutputRef {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Product < out[j].Product })
 	return out
+}
+
+// hasRole says whether one of the profile's outputs fills the generic role.
+func (p *Profile) hasRole(role string) bool {
+	for _, ref := range p.Products() {
+		if ref.Role == role {
+			return true
+		}
+	}
+	return false
 }
 
 // ExtraLabel is the label the profile gives a role that is not generic, "" otherwise.

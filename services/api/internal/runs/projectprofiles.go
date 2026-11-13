@@ -49,6 +49,17 @@ func (r *Registry) WithProject(data []byte, file string) (*Registry, *Profile, e
 	if p.Template != nil {
 		return nil, nil, fmt.Errorf("%s: a job template cannot come from a project folder: jobs are written from the templates this program ships (ADR 0068, slice 6)", file)
 	}
+	if p.Orientation.Worker != "" {
+		return nil, nil, fmt.Errorf("%s: orientation names an entry of this program's header-card table (%q), which a project profile cannot reach; declare the convention itself as an object with frame, unit and statistics", file, p.Orientation.Worker)
+	}
+	if d := p.Orientation.Decl; d != nil {
+		if err := d.Check(); err != nil {
+			return nil, nil, fmt.Errorf("%s: %w", file, err)
+		}
+		if !p.hasRole(RoleOrientation) {
+			return nil, nil, fmt.Errorf("%s: the profile declares an orientation but no output with the role %q to apply it to", file, RoleOrientation)
+		}
+	}
 	if p.Record == nil && len(p.Files) == 0 && p.Outputs == nil && p.Decomposition == nil {
 		return nil, nil, fmt.Errorf("%s: the profile declares nothing to recognise or read (no record, files, outputs or decomposition)", file)
 	}

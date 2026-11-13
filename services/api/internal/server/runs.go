@@ -138,13 +138,15 @@ func (s *Server) importFrom(ctx context.Context, src runSource) (runs.Run, int, 
 		log.Printf("runs: %v", err)
 		return runs.Run{}, 500, "internal error"
 	}
-	s.proposeOrientation(ctx, byRole)
+	s.proposeOrientation(ctx, prof, byRole)
 	return run, 0, ""
 }
 
 // proposeOrientation declares, as the adapter's proposal (never the researcher's, never over theirs), the axial interpretation of a
-// run's orientation output when its header lets the profile place frame and unit, and pairs the reliability map found on the same grid.
-func (s *Server) proposeOrientation(ctx context.Context, byRole map[string]catalog.Dataset) {
+// run's orientation output and pairs the reliability map found on the same grid. The interpretation is the header's, read by an
+// orientation profile, when the cards let it place frame and unit; for a file with no cards of any tool it is the convention the
+// project profile declares (declaredOrientation), if it declares one.
+func (s *Server) proposeOrientation(ctx context.Context, prof *runs.Profile, byRole map[string]catalog.Dataset) {
 	if psi, ok := byRole[runs.RoleOrientation]; ok {
 		cur, _ := s.Store.Get(wsCtx(ctx), psi.ID)
 		if adapterMayDeclare(cur.Interpretation) {
@@ -154,7 +156,11 @@ func (s *Server) proposeOrientation(ctx context.Context, byRole map[string]catal
 					rel = &rd.ID
 				}
 			}
-			if in, ok := proposedPsi(cur, rel); ok {
+			in, ok := proposedPsi(cur, rel)
+			if !ok {
+				in, ok = declaredOrientation(prof, cur, rel)
+			}
+			if ok {
 				if err := s.Store.SetInterpretation(cur, in); err != nil {
 					log.Printf("runs: %v", err)
 				}
@@ -180,6 +186,11 @@ func (s *Server) registerRecordOutputs(ctx context.Context, src runSource, prof 
 		}
 		if !found {
 			continue
+		}
+		if ref.Role == runs.RoleOrientation {
+			if why := s.orientationContradiction(ctx, prof, d); why != "" {
+				return nil, nil, 422, file + ": " + why
+			}
 		}
 		byRole[ref.Role] = d
 		outs = append(outs, runs.Output{Role: ref.Role, Product: ref.Product, DatasetID: d.ID, Name: d.Name})
@@ -708,6 +719,62 @@ func proposedPsi(d catalog.Dataset, rel *int64) (catalog.Interpretation, bool) {
 	}
 	o := d.OrientationHeader.Orientation
 	return catalog.Interpretation{Kind: "axial_orientation", Unit: o.Unit, ReliabilityID: rel, Frame: &o.Frame, Quantity: o.Quantity, DeclaredBy: o.Profile}, true
+}
+
+// orientationContradiction is the sentence that refuses an import when the orientation map's own header cards and the project
+// profile's declared convention disagree, naming both, and "" when there is nothing to refuse: the profile declares no orientation,
+// the header has no card of any tool that states one, or the cards agree. Neither side is picked: the cards are the file's own
+// statement and the declaration is the researcher's, so a difference is for them to settle in the profile or the file.
+func (s *Server) orientationContradiction(ctx context.Context, prof *runs.Profile, d catalog.Dataset) string {
+	decl := prof.Orientation.Decl
+	if decl == nil {
+		return ""
+	}
+	cur, err := s.Store.Get(wsCtx(ctx), d.ID)
+	if err != nil || cur.OrientationHeader == nil {
+		return "" // no card of a tool that states an orientation: the declaration fills what the file does not say
+	}
+	h := cur.OrientationHeader
+	who := "the project profile " + prof.Label()
+	if prof.Origin != nil {
+		who += " (" + prof.Origin.File + ")"
+	}
+	fix := "; nothing was imported, so correct the profile or the file"
+	o := h.Orientation
+	if o == nil {
+		return "the header carries orientation cards that could not be read in full (" + strings.Join(h.Unresolved, ", ") + " unresolved), and " + who +
+			" declares the angle " + decl.Text() + ": the declaration is not applied over a header that says something else in part" + fix
+	}
+	var diff []string
+	if o.Frame != decl.Frame {
+		diff = append(diff, "frame")
+	}
+	if o.Basis["unit"] == "file" && o.Unit != decl.Unit {
+		diff = append(diff, "unit")
+	}
+	if o.Quantity != nil && decl.Quantity != "" && *o.Quantity != decl.Quantity {
+		diff = append(diff, "quantity")
+	}
+	if len(diff) == 0 {
+		return ""
+	}
+	return "the header states the angle as " + o.Text() + ", in " + o.Unit + " (" + o.Cards["unit"] + "), but " + who + " declares it " + decl.Text() +
+		" (they differ in " + strings.Join(diff, " and ") + ")" + fix
+}
+
+// declaredOrientation is the interpretation a project profile's declared convention gives an orientation map whose header carries
+// no orientation card of any tool (orientationContradiction has already refused the file when it does and they differ). Declared by
+// the project profile, never verified; false when the profile declares none or the file's own cards already did.
+func declaredOrientation(prof *runs.Profile, d catalog.Dataset, rel *int64) (catalog.Interpretation, bool) {
+	decl := prof.Orientation.Decl
+	if decl == nil || d.OrientationHeader != nil {
+		return catalog.Interpretation{}, false
+	}
+	in := catalog.Interpretation{Kind: "axial_orientation", Unit: decl.Unit, ReliabilityID: rel, Frame: &decl.Frame, DeclaredBy: catalog.ProjectProfileAuthorPrefix + prof.Label()}
+	if decl.Quantity != "" {
+		in.Quantity = &decl.Quantity
+	}
+	return in, true
 }
 
 // adapterMayDeclare says whether a run import may write its proposed orientation over what is there: over nothing, over an earlier

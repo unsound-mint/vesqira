@@ -98,9 +98,9 @@ func TestProjectProfileReadsComponentsFromATableItNames(t *testing.T) {
 	}
 }
 
-// A non-VGT tool whose project profile maps an angle map and a reliability map to generic roles, writing VGT.jl's header cards: the
-// worker's convention reads them, so the imported orientation is declared by the file through profile:VGT.jl@1, and nothing is declared
-// for a map that carries no cards.
+// A non-VGT tool whose project profile maps an angle map and a reliability map to generic roles, writing VGT.jl's header cards and
+// declaring the same convention: the worker's convention reads the cards, so the imported orientation is declared by the file through
+// profile:VGT.jl@1, and nothing is declared for the scalar map.
 func TestProjectProfileOrientationCarriesTheWorkerConvention(t *testing.T) {
 	e := newProfEnv(t)
 	proj := e.project(t, "psitool")
@@ -109,7 +109,8 @@ func TestProjectProfileOrientationCarriesTheWorkerConvention(t *testing.T) {
 	e.cp(t, "vgt_run_current/psi_demo.fits", filepath.Join(run, "psi_demo.fits"))
 	e.cp(t, "vgt_run_current/psi_reliability_demo.fits", filepath.Join(run, "psi_reliability_demo.fits"))
 	put(t, proj, ".vesqira/profiles/psitool.json", `{"format": 1, "profile": {
-  "name": "PsiTool", "version": "1", "kind": "psitool", "orientation": "VGT.jl",
+  "name": "PsiTool", "version": "1", "kind": "psitool",
+  "orientation": {"frame": "sky", "unit": "rad", "statistics": "axial", "quantity": "b_field"},
   "record": {"file": "psi_tool.toml", "reader": "run_metadata", "anyKey": ["psitool.version"]},
   "outputs": {"table": "outputs", "files": {
     "angle_file": {"product": "angle", "role": "orientation"},

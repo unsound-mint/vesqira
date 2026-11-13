@@ -141,7 +141,7 @@ func (s *Server) importDecompRun(ctx context.Context, src runSource, prof *runs.
 		log.Printf("runs: %v", err)
 		return runs.Run{}, 500, "internal error"
 	}
-	s.proposeOrientation(ctx, byRole)
+	s.proposeOrientation(ctx, prof, byRole)
 	return run, 0, ""
 }
 

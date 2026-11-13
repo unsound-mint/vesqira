@@ -22,6 +22,11 @@ const FileHeaderAuthor = "vgt-file-header"
 // statement read by that profile's table. It is declared by the file's header, never verified.
 const ProfileAuthorPrefix = "profile:"
 
+// ProjectProfileAuthorPrefix starts the author of a declaration a project's own profile file made for a file that carries no cards:
+// "project-profile:<name>@<version>". The researcher's statement in that file, not the file's own, and never verified. It is not a
+// file-header author: nothing is read back from the header for it.
+const ProjectProfileAuthorPrefix = "project-profile:"
+
 // IsFileHeaderAuthor reports whether by names a declaration read from the file's own header: by a profile, or by the VGT.jl reading
 // that came before profiles.
 func IsFileHeaderAuthor(by string) bool {
