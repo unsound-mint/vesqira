@@ -37,7 +37,7 @@ func (s *Server) axialAnalysis(ctx context.Context, op string, d catalog.Dataset
 		return nil, 0, ""
 	}
 	switch op {
-	case "moment", "slab":
+	case "moment", "slab", "smooth_spectral":
 		return nil, 422, "this map is declared as an axial orientation map: a " + op + " would average its angles, which is not valid (0 and 180 degrees are the same orientation). Align or convolve it instead, or declare it as a scalar map first"
 	case "align", "convolve":
 	default:

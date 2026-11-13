@@ -25,7 +25,10 @@ const OPS: { id: AnalysisOp; label: string; help: string }[] = [
   { id: "slab", label: "Spectral slab", help: "A new cube of a channel range; the spectral axis stays exact." },
   { id: "align", label: "Align to another map", help: "Reproject onto another file's celestial grid (astropy reproject). It interpolates the values and does not match angular resolution; outside the footprint is NaN." },
   { id: "convolve", label: "Match to a larger beam", help: "Smooth to a target beam with the Gaussian that, with the current beam, gives it. Needs a declared beam and a target at least as large in every direction. Missing pixels stay missing; noise becomes correlated; Jy/beam is rescaled by the beam-area ratio." },
+  { id: "smooth_spectral", label: "Smooth along the spectrum", help: "A new cube smoothed along the spectral axis with a boxcar, Gaussian or Hanning kernel, width in channels. Missing values stay missing and are not read as zero; the kernel is recorded. The source is never changed." },
 ];
+
+const KERNELS = [["boxcar", "Boxcar (top-hat)"], ["gaussian", "Gaussian (width is the FWHM)"], ["hanning", "Hanning"]] as const;
 
 const fmt = (v: number | null | undefined) => (v === null || v === undefined ? EM : Number(v.toPrecision(6)).toString());
 
@@ -100,6 +103,12 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
     if (op === "slab") { p.chanStart = String(Number(v.c0 ?? "1") - 1); p.chanEnd = String(Number(v.c1 ?? String(channels)) - 1); }
     if (op === "cutout") { p.x0 = String(Number(v.x0 ?? "1") - 1); p.x1 = String(Number(v.x1 ?? "1") - 1); p.y0 = String(Number(v.y0 ?? "1") - 1); p.y1 = String(Number(v.y1 ?? "1") - 1); }
     if (op === "stats" && v.c0?.trim()) { p.chanStart = String(Number(v.c0) - 1); if (v.c1?.trim()) p.chanEnd = String(Number(v.c1) - 1); }
+    if (op === "smooth_spectral") {
+      p.kernel = v.kernel || "boxcar"; p.width = v.width || "";
+      p.minValidWeight = v.minw?.trim() || "0.5";
+      if (v.fwhm?.trim()) p.nativeFwhm = v.fwhm.trim();
+      if (v.decimate?.trim()) p.decimate = v.decimate.trim();
+    }
     if (op === "align") p.method = v.method || "interp";
     if (op === "convolve") {
       p.targetBmaj = v.tmaj ?? ""; p.targetBmin = v.tmin ?? ""; p.targetBpa = v.tpa || "0";
@@ -185,9 +194,21 @@ export function AnalysisPanel({ dataset, datasets, channels, onCreated, onJob }:
           </>
         </>
       ) : null}
+      {op === "smooth_spectral" ? (
+        <>
+          <Select label="Kernel" value={v.kernel || "boxcar"} onChange={(e) => set("kernel", e.target.value)}>
+            {KERNELS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </Select>
+          <Input label="Width (channels)" value={v.width ?? ""} onChange={(e) => set("width", e.target.value)} inputMode="decimal" hint="boxcar and Hanning: an odd whole number, 3 or more; Gaussian: its FWHM, 1 or more" />
+          <Input label="Smallest share of valid neighbours to keep a value (0 to 1)" value={v.minw ?? "0.5"} onChange={(e) => set("minw", e.target.value)} inputMode="decimal" />
+          {v.kernel === "gaussian" ? <Input label="Native spectral resolution, FWHM in channels (optional)" value={v.fwhm ?? ""} onChange={(e) => set("fwhm", e.target.value)} inputMode="decimal" hint="only with it can the new resolution be stated" /> : null}
+          <Input label="Keep every n-th channel (optional)" value={v.decimate ?? ""} onChange={(e) => set("decimate", e.target.value)} inputMode="numeric" hint="empty keeps every channel" />
+          <p className={s.note}>The width is in channels. It is given in the spectral unit only if the axis is calibrated. A value with too little valid data around it becomes missing, never zero. Masks are not carried: smoothing changes which channels a flag would describe.</p>
+        </>
+      ) : null}
       {takesMasks && masks && masks.length > 0 ? <MaskPolicies masks={masks} choice={policy} onChange={setPolicy} /> : null}
       {carryOp && masks && masks.length > 0 ? <MaskCarry masks={masks} state={carry} onChange={setCarry} op={carryOp} required={carryRequired} /> : null}
-      <Button variant="primary" disabled={busy || badWeight(policy) || (carryOp !== null && !!masks && carryUndecided(masks, carry, carryRequired)) || (op === "align" && !ref) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0)) || (op === "convolve" && v.srcBasis === "user" && !(Number(v.smaj) > 0 && Number(v.smin) > 0))} onClick={go}>
+      <Button variant="primary" disabled={busy || badWeight(policy) || (carryOp !== null && !!masks && carryUndecided(masks, carry, carryRequired)) || (op === "align" && !ref) || (op === "smooth_spectral" && (!(Number(v.width) > 0) || channels < 3)) || (op === "convolve" && !(Number(v.tmaj) > 0 && Number(v.tmin) > 0)) || (op === "convolve" && v.srcBasis === "user" && !(Number(v.smaj) > 0 && Number(v.smin) > 0))} onClick={go}>
         {busy ? "Working…" : remote ? "Create a job on the host" : op === "stats" ? "Compute statistics" : "Create the new file"}
       </Button>
       <QueueNote reason={queued} />

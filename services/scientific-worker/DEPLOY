@@ -24,3 +24,5 @@ unit_values.py
 healpix_pol.py
 orientation_profiles.py
 orientation_profiles.json
+specsmooth.py
+family.py

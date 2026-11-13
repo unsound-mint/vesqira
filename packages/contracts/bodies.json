@@ -19080,6 +19080,327 @@
    },
    "description": "The decomposition summed per width class, registered as derived maps"
   },
+  "FamilyRequest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "datasetIds"
+   ],
+   "properties": {
+    "datasetIds": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 12,
+     "items": {
+      "type": "integer",
+      "format": "int64"
+     },
+     "description": "The maps to compare: all scalar maps or all declared axial orientation maps, on this computer, sharing one grid"
+    },
+    "referenceId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "The map the others are compared with; the first one when left out"
+    },
+    "spread": {
+     "type": "string",
+     "enum": [
+      "std",
+      "mad"
+     ],
+     "description": "Per-pixel spread of scalar maps: standard deviation (ddof 1) or median absolute deviation about the median; std when left out. Axial maps use the circular spread"
+    },
+    "channel": {
+     "type": "integer",
+     "description": "The plane of every member that is a cube; omit for single-plane maps"
+    },
+    "labels": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "One name per map, in the order of datasetIds, for the result (for example the swept value); a map without one is named by its file. At most 80 characters each"
+    }
+   }
+  },
+  "FamilyMemberStats": {
+   "type": "object",
+   "required": [
+    "index",
+    "label",
+    "reference"
+   ],
+   "properties": {
+    "index": {
+     "type": "integer"
+    },
+    "label": {
+     "type": "string"
+    },
+    "reference": {
+     "type": "boolean"
+    },
+    "pixels_compared": {
+     "type": "integer"
+    },
+    "pixels_without_data": {
+     "type": "integer"
+    },
+    "mean": {
+     "type": "number",
+     "nullable": true,
+     "description": "Scalar maps: mean of member minus reference"
+    },
+    "median": {
+     "type": "number",
+     "nullable": true
+    },
+    "rms": {
+     "type": "number",
+     "nullable": true
+    },
+    "min": {
+     "type": "number",
+     "nullable": true
+    },
+    "max": {
+     "type": "number",
+     "nullable": true
+    },
+    "mean_abs_deg": {
+     "type": "number",
+     "nullable": true,
+     "description": "Axial maps: mean axial difference from the reference, in [0, 90] degrees"
+    },
+    "rms_deg": {
+     "type": "number",
+     "nullable": true
+    },
+    "within_10_deg": {
+     "type": "number",
+     "nullable": true,
+     "description": "Fraction of compared pixels within 10 degrees"
+    },
+    "am": {
+     "type": "number",
+     "nullable": true,
+     "description": "Axial maps: alignment measure <cos 2 delta> with the reference, -1 to 1"
+    }
+   }
+  },
+  "FamilySummary": {
+   "type": "object",
+   "required": [
+    "axial",
+    "labels",
+    "reference",
+    "members",
+    "comparison_maps",
+    "spread",
+    "unit",
+    "shape",
+    "warnings",
+    "policy"
+   ],
+   "properties": {
+    "axial": {
+     "type": "boolean"
+    },
+    "kind": {
+     "type": "string"
+    },
+    "labels": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "reference": {
+     "type": "integer",
+     "description": "Index of the reference in labels"
+    },
+    "members": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/FamilyMemberStats"
+     }
+    },
+    "comparison_maps": {
+     "type": "array",
+     "items": {
+      "type": "integer"
+     },
+     "description": "Indexes of the members that have a comparison map (every one but the reference)"
+    },
+    "spread": {
+     "type": "string",
+     "description": "std, mad or circular"
+    },
+    "spread_stats": {
+     "type": "object",
+     "additionalProperties": true,
+     "description": "pixels, median and max of the spread map"
+    },
+    "unit": {
+     "type": "string",
+     "description": "Unit of the comparison and spread maps"
+    },
+    "shape": {
+     "type": "array",
+     "items": {
+      "type": "integer"
+     }
+    },
+    "pairwise_am": {
+     "type": "array",
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "number",
+       "nullable": true
+      }
+     },
+     "description": "Axial maps: AM between every pair of members"
+    },
+    "pairwise_rms": {
+     "type": "array",
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "number",
+       "nullable": true
+      }
+     },
+     "description": "Scalar maps: rms difference between every pair of members"
+    },
+    "orientations_cancel_pixels": {
+     "type": "integer",
+     "description": "Axial maps: pixels where the orientations cancel and the spread is undefined"
+    },
+    "warnings": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "policy": {
+     "type": "string"
+    },
+    "unit_source": {
+     "type": "string"
+    }
+   }
+  },
+  "FamilyMap": {
+   "type": "object",
+   "required": [
+    "role",
+    "member",
+    "dataset"
+   ],
+   "properties": {
+    "role": {
+     "type": "string",
+     "enum": [
+      "spread",
+      "difference"
+     ]
+    },
+    "member": {
+     "type": "integer",
+     "description": "Index in datasetIds of the member a difference map belongs to; -1 for the spread map"
+    },
+    "dataset": {
+     "$ref": "#/components/schemas/Dataset"
+    }
+   }
+  },
+  "FamilyResult": {
+   "type": "object",
+   "required": [
+    "summary",
+    "maps",
+    "datasetIds",
+    "referenceId"
+   ],
+   "properties": {
+    "summary": {
+     "$ref": "#/components/schemas/FamilySummary"
+    },
+    "maps": {
+     "type": "array",
+     "items": {
+      "$ref": "#/components/schemas/FamilyMap"
+     }
+    },
+    "datasetIds": {
+     "type": "array",
+     "items": {
+      "type": "integer",
+      "format": "int64"
+     }
+    },
+    "referenceId": {
+     "type": "integer",
+     "format": "int64"
+    }
+   }
+  },
+  "FamilyCandidate": {
+   "type": "object",
+   "required": [
+    "op",
+    "sourceId",
+    "varying",
+    "fixed",
+    "members"
+   ],
+   "properties": {
+    "op": {
+     "type": "string",
+     "enum": [
+      "smooth_spectral",
+      "convolve"
+     ]
+    },
+    "sourceId": {
+     "type": "integer",
+     "format": "int64",
+     "description": "The dataset every member was made from"
+    },
+    "varying": {
+     "type": "string",
+     "description": "The one option that differs between the members, as the analysis request named it (for example width)"
+    },
+    "fixed": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     },
+     "description": "The options every member shares"
+    },
+    "members": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "required": [
+       "datasetId",
+       "value"
+      ],
+      "properties": {
+       "datasetId": {
+        "type": "integer",
+        "format": "int64"
+       },
+       "value": {
+        "type": "string",
+        "description": "The value of the varying option for this member"
+       }
+      }
+     }
+    }
+   }
+  },
   "AccessLabel": {
    "type": "string",
    "enum": [
@@ -29328,6 +29649,97 @@
       "application/json": {
        "schema": {
         "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "POST /api/analysis/family": {
+   "summary": "Compare a family of maps on one grid with a chosen reference and register the comparison maps and the spread map: scalar maps by difference and a stated spread, axial orientation maps by the axial difference in [0, 90] degrees, AM and a circular spread, never a plain difference (ADR 0070)",
+   "requestBody": {
+    "required": true,
+    "content": {
+     "application/json": {
+      "schema": {
+       "$ref": "#/components/schemas/FamilyRequest"
+      }
+     }
+    }
+   },
+   "responses": {
+    "201": {
+     "description": "computed: one comparison map per member but the reference, and the spread map, each a registered derived dataset",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/FamilyResult"
+       }
+      }
+     }
+    },
+    "409": {
+     "description": "the maps are not known to share a grid (reasons listed; nothing is resampled), a map lives on another host, or an orientation declaration is stale",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "422": {
+     "description": "fewer than 2 or more than 12 maps, mixed kinds, orientations stated in different frames, different brightness units, or the worker refused",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    },
+    "default": {
+     "description": "Error",
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/Error"
+       }
+      }
+     }
+    }
+   }
+  },
+  "GET /api/analysis/families": {
+   "summary": "Families of derived datasets that can be compared (ADR 0070): results of one source, made by the same operation, whose options are equal but one, read from the derived records",
+   "responses": {
+    "200": {
+     "description": "candidate families, possibly none",
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "families"
+        ],
+        "properties": {
+         "families": {
+          "type": "array",
+          "items": {
+           "$ref": "#/components/schemas/FamilyCandidate"
+          }
+         }
+        }
        }
       }
      }

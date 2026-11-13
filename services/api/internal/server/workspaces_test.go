@@ -549,6 +549,7 @@ func TestBoardsCannotFollowJobsOnTheGroupServer(t *testing.T) {
 var bodyIDRoutes = map[string]struct{ path, body string }{
 	"GET /api/compat":                           {"/api/compat?a={datasets/id}&b={own:datasets/id}", ""},
 	"POST /api/analysis":                        {"/api/analysis", `{"op":"moment0","datasetId":{datasets/id},"referenceId":{datasets/id}}`},
+	"POST /api/analysis/family":                 {"/api/analysis/family", `{"datasetIds":[{datasets/id},{datasets/id}],"referenceId":{datasets/id}}`},
 	"POST /api/analysis/relative-orientation":   {"/api/analysis/relative-orientation", `{"datasetId":{own:datasets/id},"otherId":{datasets/id}}`},
 	"POST /api/analysis/healpix-sample":         {"/api/analysis/healpix-sample", `{"datasetId":{datasets/id},"targetId":{own:datasets/id},"product":"b_field"}`},
 	"POST /api/boards/{id}/items":               {"/api/boards/{own:boards/id}/items", `{"figureId":{figures/id}}`},

@@ -149,26 +149,38 @@ func echoes(head []byte, hashes []string) bool {
 // --input, --reference, --weights and --ref-weights it was given), and their hashes, to check against the program's reply.
 func (s *Server) corrArgs(ws workspace.ID, host int64, args []string) (opt string, hashes []string, snapshot []map[string]any) {
 	sent := map[string]any{}
-	for i := 0; i+1 < len(args); i++ {
-		switch args[i] {
-		case "--input", "--reference", "--third", "--weights", "--ref-weights":
-		default:
-			continue
+	read := func(role, p string) {
+		if _, dup := sent[p]; dup { // the reference is both --input and a member of the family
+			return
 		}
-		p := args[i+1]
 		v, ok := s.corrPaths.Load(corrPathRef{ws, host, p})
 		if !ok {
-			continue
+			return
 		}
 		d, err := s.Store.Get(ws, v.(int64))
 		if err != nil {
-			continue
+			return
 		}
 		if st := d.Corrections.InForce(); st != nil {
 			pl := corrPayload(*st)
 			sent[p] = pl
 			hashes = append(hashes, pl["hash"].(string))
-			snapshot = append(snapshot, map[string]any{"role": strings.TrimPrefix(args[i], "--"), "corrections": safeCorrections(*st), "hash": pl["hash"]})
+			snapshot = append(snapshot, map[string]any{"role": role, "corrections": safeCorrections(*st), "hash": pl["hash"]})
+		}
+	}
+	for i := 0; i+1 < len(args); i++ {
+		switch args[i] {
+		case "--input", "--reference", "--third", "--weights", "--ref-weights":
+			read(strings.TrimPrefix(args[i], "--"), args[i+1])
+		case "--family": // the maps of a family agreement (ADR 0070), a JSON list of {path, ...}
+			var fam []struct {
+				Path string `json:"path"`
+			}
+			if json.Unmarshal([]byte(args[i+1]), &fam) == nil {
+				for _, m := range fam {
+					read("family", m.Path)
+				}
+			}
 		}
 	}
 	if len(sent) == 0 {
