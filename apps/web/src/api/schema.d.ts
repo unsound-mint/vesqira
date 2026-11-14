@@ -1379,6 +1379,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/datasets/{id}/interpretation/apply-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * What copying this dataset's orientation declaration to the other runs would do, from the catalog alone
+         * @description Targets are the same-role (orientation) outputs of the other runs in the workspace read with the same tool profile, inside the project or folder of the source's run. A target that is already declared, or whose own header states the convention, is skipped. No file is read: the values are checked against the unit when the apply is confirmed.
+         */
+        get: operations["owner_s_applyPreviewRoute_get_api_datasets_id_interpretation_apply_preview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/datasets/{id}/link": {
         parameters: {
             query?: never;
@@ -2699,6 +2721,45 @@ export interface paths {
         put?: never;
         /** Replace a host's VPN commands (owner listener only, --enable-vpn) */
         post: operations["owner_s_setHostVPN_post_api_hosts_id_vpn_config"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/interpretations/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Copy a dataset's orientation declaration to the previewed targets, each re-checked on the server
+         * @description Each target gets the source's kind, unit, frame and quantity, declared by the user and applied from the source (applyId, appliedFrom, appliedBy). The reliability map is the target run's own reliability output. A target already declared is never overwritten; a target whose header states the convention is skipped; a target that is not a single plane, or whose values cannot be in the declared unit (radians with values beyond 2 pi), is refused with a reason. Each target is written on its own, so one refusal leaves the others.
+         */
+        post: operations["owner_s_applyRoute_post_api_interpretations_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/interpretations/apply/{applyId}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                applyId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Remove exactly the declarations one apply wrote that have not been edited or cleared since */
+        post: operations["owner_s_undoApplyRoute_post_api_interpretations_apply_applyId_undo"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6128,6 +6189,15 @@ export interface components {
              * @enum {string|null}
              */
             skyFrame?: "galactic" | "icrs" | null;
+            /** @description Set when the declaration was copied from another dataset's by "apply to the other runs": the apply it belongs to (what an undo of that apply removes). Absent for a declaration made directly. Any later declaration of this dataset clears it. */
+            applyId?: string;
+            /**
+             * Format: int64
+             * @description The dataset whose declaration this one was copied from. The basis stays the user's own declaration (declaredBy user, tier declared).
+             */
+            appliedFrom?: number;
+            /** @description The account that applied it. */
+            appliedBy?: string;
         };
         /** @description A registered dataset: a reference to the original file plus header facts. The file itself is never altered. */
         Dataset: {
@@ -12809,6 +12879,108 @@ export interface components {
             grant?: components["schemas"]["RelayGrantOffer"];
             reason: string;
         };
+        ApplyReliability: {
+            /** Format: int64 */
+            datasetId: number;
+            name: string;
+        };
+        /** @description One candidate target. In a preview the outcome is what an apply would do (declare, skipped or refused); in an apply result it is what it did (declared, skipped or refused). */
+        ApplyRow: {
+            /** Format: int64 */
+            datasetId: number;
+            name: string;
+            runName: string;
+            /** @enum {string} */
+            outcome: "declare" | "declared" | "skipped" | "refused";
+            /** @description Why a skipped or refused target was left alone: already declared (by whom), the file's own header states the convention, not a single plane, values beyond the declared unit, not in scope. */
+            reason?: string;
+            /** @description For a target that is declared: what is missing, such as no reliability output in its run. */
+            note?: string;
+            /** @description The target's own run's reliability output that is paired with it; never the source's reliability map. */
+            reliability: components["schemas"]["ApplyReliability"] | null;
+        };
+        ApplyScope: {
+            /** @enum {string} */
+            scope: "project" | "folder";
+            /** @description The project's name, or the folder in words */
+            label: string;
+            /** @description Other runs read with the same tool profile inside it */
+            runs: number;
+        };
+        ApplyPreview: {
+            /** @description False when this dataset's declaration cannot be applied to other runs; reason says why */
+            eligible: boolean;
+            reason?: string;
+            source: {
+                /** Format: int64 */
+                datasetId: number;
+                name: string;
+                runName: string;
+                /** @description The tool profile (name@version) the other runs must have been read with */
+                profile: string;
+                /** @enum {string} */
+                unit: "deg" | "rad";
+                /** @enum {string|null} */
+                frame: "pixel" | "sky" | null;
+                quantity: string | null;
+            } | null;
+            scopes: components["schemas"]["ApplyScope"][];
+            /** @description The scope the rows are listed for */
+            scope: string;
+            rows: components["schemas"]["ApplyRow"][];
+            /** @description Rows by outcome */
+            counts: {
+                [key: string]: number;
+            };
+        };
+        ApplyRequest: {
+            /** Format: int64 */
+            sourceId: number;
+            /** @enum {string} */
+            scope: "project" | "folder";
+            /** @description The datasets the preview listed; each is checked again on the server */
+            targetIds: number[];
+            /** @description Must be true: declarations are written only on confirmation */
+            confirm: boolean;
+        };
+        ApplyResult: {
+            /** @description Names this apply, for the undo */
+            applyId: string;
+            scope: string;
+            rows: components["schemas"]["ApplyRow"][];
+            /** @description Rows by outcome */
+            counts: {
+                [key: string]: number;
+            };
+        };
+        ApplyUndoResult: {
+            applyId: string;
+            /** @description Declarations removed: those of this apply that nobody edited or cleared since */
+            removed: number;
+        };
+        /** @description Sets the host's Python command, drops the host's cached worker and checks the host again. */
+        HostPython: {
+            /** @description The command that starts Python on the host: python3, or the absolute path of a module's interpreter or a project venv. Only letters, digits and . _ / ~ - are accepted. */
+            python: string;
+        };
+        HostPythonCandidate: {
+            /** @description Absolute path of the interpreter on the host; it passes the Python command validator. */
+            path: string;
+            /** @description Python version, when the interpreter ran. */
+            python?: string;
+            astropy?: string;
+            numpy?: string;
+            /** @description Python 3.11 or newer with numpy and astropy importable. */
+            suitable: boolean;
+            /** @description Why it cannot be used. */
+            problem?: string;
+        };
+        HostPythonSearch: {
+            /** @description Every interpreter tested (at most 20, within about 30 seconds), suitable or not. */
+            candidates: components["schemas"]["HostPythonCandidate"][];
+            /** @description The oldest Python the worker runs on (it starts with python -P). */
+            minPython: string;
+        };
         /** @description Answers every open 'FITS files without BUNIT' question under a folder with the same answer. Without confirm it only counts what the answer would reach. */
         TreeAnswerRequest: {
             /** @description Relative to the project folder, slash-separated; "." is the whole project. The questions it reaches are derived on the server, never taken from the request. */
@@ -12840,29 +13012,6 @@ export interface components {
             open: number;
             /** @description Folders whose answer could not be applied; answering again retries them. */
             failed?: string[];
-        };
-        /** @description Sets the host's Python command, drops the host's cached worker and checks the host again. */
-        HostPython: {
-            /** @description The command that starts Python on the host: python3, or the absolute path of a module's interpreter or a project venv. Only letters, digits and . _ / ~ - are accepted. */
-            python: string;
-        };
-        HostPythonCandidate: {
-            /** @description Absolute path of the interpreter on the host; it passes the Python command validator. */
-            path: string;
-            /** @description Python version, when the interpreter ran. */
-            python?: string;
-            astropy?: string;
-            numpy?: string;
-            /** @description Python 3.11 or newer with numpy and astropy importable. */
-            suitable: boolean;
-            /** @description Why it cannot be used. */
-            problem?: string;
-        };
-        HostPythonSearch: {
-            /** @description Every interpreter tested (at most 20, within about 30 seconds), suitable or not. */
-            candidates: components["schemas"]["HostPythonCandidate"][];
-            /** @description The oldest Python the worker runs on (it starts with python -P). */
-            minPython: string;
         };
     };
     responses: never;
@@ -15521,6 +15670,57 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    owner_s_applyPreviewRoute_get_api_datasets_id_interpretation_apply_preview: {
+        parameters: {
+            query?: {
+                scope?: "project" | "folder";
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description the preview, or eligible false with the reason */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyPreview"];
+                };
+            };
+            /** @description an unknown scope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such dataset */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -18338,6 +18538,106 @@ export interface operations {
             };
             /** @description invalid VPN command */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_applyRoute_post_api_interpretations_apply: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description the outcome of every target */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyResult"];
+                };
+            };
+            /** @description no confirmation, no targets, too many, or an unknown scope */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description no such source dataset */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description the source's declaration cannot be applied (not its own, not an orientation output, stale) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    owner_s_undoApplyRoute_post_api_interpretations_apply_applyId_undo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                applyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description how many were removed; a second call removes none */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyUndoResult"];
+                };
+            };
+            /** @description not an apply id */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

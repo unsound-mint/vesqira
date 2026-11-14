@@ -26,3 +26,21 @@ Worker: 1 and 179 degrees average to 0 (not 90); 0 and 90 degrees are undefined 
 
 ## Rollback / Migration
 Drop the `interpretations` table and the axial routes; datasets and files are unaffected.
+
+## Amendment 2026-11-14: apply a declaration to the other runs
+
+Context: older VGT outputs carry no PSIFRAME, PSIANGLE or BUNIT, so each run's psi map opens as a scalar and has to be declared by hand. With hundreds of runs that is not workable.
+
+- **Offer.** After a map is declared directly by the user, the inspector can copy that declaration to the orientation-role output of the other runs read with the same tool profile (name@version), inside the innermost project that contains the source run's folder, or inside the source run's parent folder. The preview comes from the catalog alone and reads no file. A copy cannot itself be a source, and a declaration that is stale, or was proposed by an adapter, is not offered.
+- **Server route.** `POST /api/interpretations/apply` takes the source id, the scope and explicit target ids, with `confirm: true`. The server rebuilds the candidate set and checks every target again. Same scope as a single declaration (dataset write); the preview needs dataset read. Targets outside the candidate set (another profile, another workspace, unknown id) are refused.
+- **Outcomes per target.** Declared, skipped or refused, each with a reason. Skipped: any existing interpretation (the reason names who made it, adapter proposals included), an archived dataset, and a file whose own header states the convention (a convention card is present, or the header profile resolved a field); a file's own statement wins. Refused: not a pixel-grid image, not a single plane, or values that cannot be in the declared unit.
+- **Value range.** For a declaration in radians, the worker's axial operation returns the extremes of the values (`value_min`, `value_max`) without a plane payload, so a remote host ships no map. Radians are refused when a value lies beyond 2 pi + 1e-3 in magnitude. Degrees are never refused on range. A reply without the extremes (a host with an older worker), an unreadable file or a file that changed since it was catalogued is refused ("the unit was not checked"), never declared unchecked.
+- **Reliability.** The reliability map is the target run's own reliability-role output, used when the run has exactly one, on the same host, a pixel-grid image, not itself declared as angles and `compat.Grids`-compatible with the target. Otherwise the target is declared without it and the row says why. The source's reliability map is never copied to another run, whether or not the source had one.
+- **Provenance.** Stored as declared by the user, with `applyId`, `appliedFrom` (the source dataset) and `appliedBy`. The tier stays `declared`; it is not `verified` and not `inferred`. The inspector says it was applied from another map, not read from this file.
+- **Atomicity and undo.** Each target is a conditional insert (`ON CONFLICT DO NOTHING`), so a declaration made after the preview is never replaced. `POST /api/interpretations/apply/{applyId}/undo` deletes the rows carrying that apply id in the caller's workspace. Any later direct declaration of a target clears the apply marks (the upsert sets them to NULL), so an edited declaration is left alone.
+- **Schema 38.** Three nullable columns on `interpretations`: `apply_id`, `applied_from`, `applied_by`. Audit entries record apply and undo.
+- **Limits.** 5000 targets and 256 KB per request; range reads run four at a time.
+
+Validation: Go tests for each outcome, the target run's own reliability, the provenance basis, the workspace boundary, undo leaving an edited declaration alone, no overwrite after the preview, the range refusal at the threshold, and a real-worker test of the extremes. Worker test for the extremes in the declared unit. Web unit test of the preview, confirm and undo flow. The interface was not checked in a browser in this change.
+
+Rollback: ignore the three columns, or drop them; the declarations written by an apply are ordinary user declarations and keep working.

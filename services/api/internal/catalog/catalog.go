@@ -81,6 +81,13 @@ type Interpretation struct {
 	// Stale is true when the file's registered size or modification time differs from what it was when the user
 	// made the declaration: the declaration may no longer describe these bytes.
 	Stale bool `json:"stale"`
+	// ApplyID, AppliedFrom and AppliedBy are set when the declaration was copied from another dataset's by "apply to the other runs":
+	// the apply it belongs to, the dataset it was copied from and the account that applied it. The basis is still the user's
+	// declaration (DeclaredBy "user"); these say it was a copy. A later declaration of this dataset by any route clears them, so
+	// an undo of the apply reaches only rows still unedited.
+	ApplyID     string `json:"applyId,omitempty"`
+	AppliedFrom *int64 `json:"appliedFrom,omitempty"`
+	AppliedBy   string `json:"appliedBy,omitempty"`
 }
 
 type Store struct{ db *sql.DB }
@@ -149,6 +156,11 @@ func Open(dsn string) (*Store, error) {
 		}
 		if err == nil {
 			err = schema.AddColumn(db, "interpretations", "quantity", "TEXT")
+		}
+		for _, c := range schema.AppliedColumns {
+			if err == nil {
+				err = schema.AddColumn(db, "interpretations", c.Name, c.Def)
+			}
 		}
 		if err == nil {
 			err = schema.AddColumn(db, "datasets", "host_id", "INTEGER NOT NULL DEFAULT 0")
@@ -287,9 +299,10 @@ func (s *Store) Get(ws workspace.ID, id int64) (Dataset, error) {
 func (s *Store) interpretation(id int64, d Dataset) (*Interpretation, error) {
 	var in Interpretation
 	var rel sql.NullInt64
-	var frame, quantity sql.NullString
+	var frame, quantity, applyID, appliedBy sql.NullString
+	var appliedFrom sql.NullInt64
 	var at, size, mod int64
-	err := s.db.QueryRow(`SELECT kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by,frame,quantity,tier,mapping_version FROM interpretations WHERE dataset_id=?`, id).Scan(&in.Kind, &in.Unit, &rel, &at, &size, &mod, &in.DeclaredBy, &frame, &quantity, &in.Tier, &in.MappingVersion)
+	err := s.db.QueryRow(`SELECT kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by,frame,quantity,tier,mapping_version,apply_id,applied_from,applied_by FROM interpretations WHERE dataset_id=?`, id).Scan(&in.Kind, &in.Unit, &rel, &at, &size, &mod, &in.DeclaredBy, &frame, &quantity, &in.Tier, &in.MappingVersion, &applyID, &appliedFrom, &appliedBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -304,6 +317,9 @@ func (s *Store) interpretation(id int64, d Dataset) (*Interpretation, error) {
 	}
 	if quantity.Valid {
 		in.Quantity = &quantity.String
+	}
+	if applyID.Valid && appliedFrom.Valid {
+		in.ApplyID, in.AppliedFrom, in.AppliedBy = applyID.String, &appliedFrom.Int64, appliedBy.String
 	}
 	in.DeclaredAt = time.Unix(at, 0).UTC()
 	in.Stale = size != d.SizeBytes || mod != d.ModifiedAt.UnixNano()
@@ -352,9 +368,45 @@ func (s *Store) SetInterpretation(d Dataset, in Interpretation) error {
 	_, err := s.db.Exec(`INSERT INTO interpretations(dataset_id,kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by,frame,quantity,tier,mapping_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(dataset_id) DO UPDATE SET kind=excluded.kind,unit=excluded.unit,reliability_id=excluded.reliability_id,declared_at=excluded.declared_at,
 			size_bytes=excluded.size_bytes,modified_ns=excluded.modified_ns,declared_by=excluded.declared_by,frame=excluded.frame,quantity=excluded.quantity,
-			tier=excluded.tier,mapping_version=excluded.mapping_version`,
+			tier=excluded.tier,mapping_version=excluded.mapping_version,apply_id=NULL,applied_from=NULL,applied_by=NULL`,
 		id, in.Kind, in.Unit, rel, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano(), by, frame, quantity, tier, mapping)
 	return err
+}
+
+// ApplyInterpretation records a declaration copied from dataset `from` by the apply `applyID`, for account `by`, in the target's
+// own name: declared by the user, never over a row that is already there (a declaration made since the preview, by anyone, wins).
+// It reports whether the row was written.
+func (s *Store) ApplyInterpretation(d Dataset, in Interpretation, applyID string, from int64, by string) (bool, error) {
+	var rel, frame, quantity any
+	if in.ReliabilityID != nil {
+		rel = *in.ReliabilityID
+	}
+	if in.Frame != nil {
+		frame = *in.Frame
+	}
+	if in.Quantity != nil {
+		quantity = *in.Quantity
+	}
+	tier, mapping := TierOf("user")
+	res, err := s.db.Exec(`INSERT INTO interpretations(dataset_id,kind,unit,reliability_id,declared_at,size_bytes,modified_ns,declared_by,frame,quantity,tier,mapping_version,apply_id,applied_from,applied_by)
+		VALUES(?,?,?,?,?,?,?,'user',?,?,?,?,?,?,?) ON CONFLICT(dataset_id) DO NOTHING`,
+		d.ID, in.Kind, in.Unit, rel, time.Now().Unix(), d.SizeBytes, d.ModifiedAt.UnixNano(), frame, quantity, tier, mapping, applyID, from, by)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// UndoApply removes exactly the declarations the apply wrote that have not been edited since (SetInterpretation clears the apply
+// id of a row it rewrites), in the workspace, and returns how many it removed.
+func (s *Store) UndoApply(ws workspace.ID, applyID string) (int, error) {
+	res, err := s.db.Exec(`DELETE FROM interpretations WHERE apply_id=? AND dataset_id IN (SELECT id FROM datasets WHERE workspace_id=?)`, applyID, ws)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
 }
 
 func (s *Store) ClearInterpretation(id int64) error {
