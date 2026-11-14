@@ -22,6 +22,18 @@ import (
 //go:embed run_profiles.json
 var shippedProfiles []byte
 
+// RoleIsNotBrightness says whether an output of this role is a quantity that is not a brightness: orientation angles, a
+// reliability or support map, the fit's R̄ statistic, a table of components. The profile states what such a file is, so
+// nobody is asked for a brightness unit for it. A cube, a model, a residual, a crop or component maps may be a brightness
+// (or carry one among other quantities), so they, and any role not listed, keep the question.
+func RoleIsNotBrightness(role string) bool {
+	switch role {
+	case RoleOrientation, RoleReliability, RoleSupport, RoleComponentTable, "fit_rbar2":
+		return true
+	}
+	return false
+}
+
 // Generic output roles. The ids are stored in run_outputs.role and sent in contracts; the tool's name is only a label.
 const (
 	RoleOrientation    = "orientation"

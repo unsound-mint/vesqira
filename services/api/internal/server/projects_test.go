@@ -137,6 +137,7 @@ type sumJSON struct {
 			Bytes int64 `json:"bytes"`
 		} `json:"archives"`
 		NeverRead int `json:"neverRead"`
+		ToolEnvs  int `json:"toolEnvs"`
 	} `json:"counts"`
 	Git struct {
 		Present bool   `json:"present"`

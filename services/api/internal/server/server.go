@@ -367,6 +367,7 @@ func (s *Server) Handler() http.Handler {
 		s.route(mux, "GET /api/projects/{id}/tree", authz.ProjectRead, s.projectTree)
 		s.route(mux, "GET /api/projects/{id}/needs", authz.ProjectRead, s.projectNeeds)
 		s.route(mux, "POST /api/projects/{id}/answers", authz.ProjectWrite, s.answerProject)
+		s.route(mux, "POST /api/projects/{id}/answers/tree", authz.ProjectWrite, s.answerTree)
 		s.route(mux, "POST /api/projects/{id}/project-file", authz.ProjectWrite, s.writeProject)
 		s.route(mux, "GET /api/projects/{id}/import/rules", authz.ProjectRead, s.importRulesGet)
 		s.route(mux, "PUT /api/projects/{id}/import/rules", authz.ProjectWrite, s.importRulesPut)

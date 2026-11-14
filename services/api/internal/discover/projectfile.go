@@ -12,8 +12,8 @@ import (
 // ProjectFilePath is where a project keeps its own layout and the answers its researcher gave, inside the folder.
 const ProjectFilePath = ".vesqira/project.toml"
 
-// Answer is something the researcher said, recorded in project.toml. DeclaredBy is always "you": an answer is never
-// written on anyone's behalf.
+// Answer is something the researcher said, recorded in project.toml. DeclaredBy is "you", or "you, for the folder tree X" when
+// one answer was given for every folder under X: an answer is never written on anyone's behalf.
 type Answer struct {
 	Need       string `toml:"need" json:"need"`
 	Answer     string `toml:"answer" json:"answer"`

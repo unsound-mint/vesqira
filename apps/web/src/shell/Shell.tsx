@@ -439,10 +439,10 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
         <NotificationBell items={notes.items} unread={notes.unread} onOpened={notes.markAllRead} onOpenJob={(id) => { setFocusJob(id); setMode("jobs"); }} onOpenRun={openRun} />
         {account}
         {project && project.scanned && project.needsCount > 0 ? (
-          <button type="button" className={s.pillBtn} aria-pressed={mode === "needs"} onClick={() => setMode("needs")}><Pill tone="warn">{`${project.needsCount} to answer`}</Pill></button>
+          <button type="button" className={s.pillBtn} aria-label={`${project.needsCount} to answer`} aria-pressed={mode === "needs"} onClick={() => setMode("needs")}><Pill tone="warn">{project.needsCount}<span className={s.wide}>&nbsp;to answer</span></Pill></button>
         ) : null}
         {health && health.of > 0 ? (
-          <button type="button" className={s.pillBtn} aria-pressed={mode === "health"} onClick={() => setMode("health")}><Pill tone={health.ok === health.of ? "ok" : "warn"}>{`health ${health.ok} of ${health.of}`}</Pill></button>
+          <button type="button" className={s.pillBtn} aria-label={`health ${health.ok} of ${health.of}`} aria-pressed={mode === "health"} onClick={() => setMode("health")}><Pill tone={health.ok === health.of ? "ok" : "warn"}><span className={s.wide}>health&nbsp;</span>{`${health.ok} of ${health.of}`}</Pill></button>
         ) : null}
       </header>
 

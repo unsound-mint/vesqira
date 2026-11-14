@@ -15,6 +15,7 @@ import (
 	"github.com/unsound-mint/vesqira/services/api/internal/catalog"
 	"github.com/unsound-mint/vesqira/services/api/internal/discover"
 	"github.com/unsound-mint/vesqira/services/api/internal/projects"
+	"github.com/unsound-mint/vesqira/services/api/internal/runs"
 	"github.com/unsound-mint/vesqira/services/api/internal/workspace"
 )
 
@@ -97,8 +98,8 @@ func (s *Server) computeNeeds(ws workspace.ID, p projects.Project) ([]need, erro
 	if err != nil {
 		return nil, err
 	}
-	// FITS files whose header has no BUNIT, by folder. Only files that are registered can be judged, and an orientation map
-	// (or the reliability map of one) is never asked for a brightness unit. A unit a person declared (here or on the file's
+	// FITS files whose header has no BUNIT, by folder. Only files that are registered can be judged, and a file that is not a
+	// brightness (an orientation map, a reliability or support map, a fit R̄ map) is never asked for a brightness unit. A unit a person declared (here or on the file's
 	// own page) settles a file for as long as it describes the file as registered; once the question has been answered
 	// "declare V", it stays settled only for files that really have V, so the answer never claims more than the files show.
 	units, err := s.Store.FreshUnits(ws)
@@ -108,6 +109,19 @@ func (s *Server) computeNeeds(ws workspace.ID, p projects.Project) ([]need, erro
 	notBrightness, err := s.noBrightness(ws)
 	if err != nil {
 		return nil, err
+	}
+	// a run output whose profile role is not a brightness (support counts, fit R̄, a component table, orientation, reliability)
+	// is not asked for a brightness unit either: the role says what the file is, and its unit stays unresolved
+	if s.Runs != nil {
+		roles, err := s.Runs.OutputRoles(ws)
+		if err != nil {
+			return nil, err
+		}
+		for id, role := range roles {
+			if runs.RoleIsNotBrightness(role) {
+				notBrightness[id] = true
+			}
+		}
 	}
 	type bunitFile struct {
 		path string
@@ -514,46 +528,50 @@ func (s *Server) applyAnswer(ws workspace.ID, n need, in answerIn) error {
 // It returns whether the answer reached the file and a note when it did not.
 func (s *Server) recordAnswer(ctx context.Context, p projects.Project, n need, in answerIn) (written bool, note string, err error) {
 	a := projects.Answer{Need: in.Need, Answer: in.Answer, Value: in.Value, DeclaredBy: "you", Date: time.Now().Format("2006-01-02")}
-	sum := s.storedSummaryOf(p)
 	block := discover.AnswerBlock(discover.Answer{Need: a.Need, Answer: a.Answer, Value: a.Value, DeclaredBy: a.DeclaredBy, Date: a.Date})
 	if n.Kind == "result_folder" && in.Answer == "mark_run" {
 		block = discover.ManualRunBlock(strings.TrimPrefix(n.ID, "results:")) + block
 	}
-	if p.HostID != 0 {
-		// on a host the file is written through the host's ssh connection, under the rules of ADR 0039
-		written, note, err = s.appendOnHost(ctx, p, block, in.Write, sum.Proposed)
-		if err != nil {
-			return false, "", err
-		}
-	} else {
-		_, file := projectFilePaths(p.Path)
-		_, statErr := os.Lstat(file)
-		exists := statErr == nil
-		if in.Write || exists {
-			base := ""
-			if exists {
-				data, rerr := os.ReadFile(file)
-				if rerr != nil {
-					return false, "", rerr
-				}
-				base = string(data)
-			} else {
-				base = sum.Proposed
-			}
-			out, aerr := discover.Append([]byte(base), block)
-			if aerr != nil {
-				return false, "", aerr
-			}
-			if werr := writeProjectFile(p.Path, out); werr != nil {
-				return false, "", werr
-			}
-			written = true
-		} else {
-			note = "not written to the project: there is no .vesqira/project.toml yet; the answer is kept in the catalog"
-		}
+	written, note, err = s.writeProjectBlock(ctx, p, block, in.Write)
+	if err != nil {
+		return false, "", err
 	}
 	a.Written = written
 	return written, note, s.Projects.SetAnswer(p.ID, a)
+}
+
+// writeProjectBlock appends TOML text to the project file when asked or when the file exists (on a host: under the rules of
+// ADR 0039), and says whether it did and, when it did not, why.
+func (s *Server) writeProjectBlock(ctx context.Context, p projects.Project, block string, write bool) (written bool, note string, err error) {
+	sum := s.storedSummaryOf(p)
+	if p.HostID != 0 {
+		// on a host the file is written through the host's ssh connection, under the rules of ADR 0039
+		return s.appendOnHost(ctx, p, block, write, sum.Proposed)
+	}
+	_, file := projectFilePaths(p.Path)
+	_, statErr := os.Lstat(file)
+	exists := statErr == nil
+	if !write && !exists {
+		return false, "not written to the project: there is no .vesqira/project.toml yet; the answer is kept in the catalog", nil
+	}
+	base := ""
+	if exists {
+		data, rerr := os.ReadFile(file)
+		if rerr != nil {
+			return false, "", rerr
+		}
+		base = string(data)
+	} else {
+		base = sum.Proposed
+	}
+	out, aerr := discover.Append([]byte(base), block)
+	if aerr != nil {
+		return false, "", aerr
+	}
+	if werr := writeProjectFile(p.Path, out); werr != nil {
+		return false, "", werr
+	}
+	return true, "", nil
 }
 
 // proposalSource says who proposed an orientation declaration nobody has confirmed: a run import or an analysis.

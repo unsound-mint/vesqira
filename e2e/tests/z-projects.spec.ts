@@ -119,4 +119,9 @@ test("on a phone the explorer does not cover the page that was asked for", async
   await expect(page.getByRole("complementary", { name: "Explorer" })).toBeHidden();
   const wide = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
   expect(wide).toBeLessThanOrEqual(0);
+  // the title bar's own items fit too: the pills keep their number, their accessible name stays whole
+  const header = page.getByRole("banner");
+  expect(await header.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+  const pill = page.getByRole("button", { name: /to answer/ });
+  if (await pill.count()) await expect(pill).toHaveAccessibleName(/^\d+ to answer$/);
 });
