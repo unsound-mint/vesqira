@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 
 // ADR 0031: a folder chosen in the file manager inside a mount of a host that is not registered offers "Add this host…",
 // which opens the Hosts section and fills the add-host form from the mount's name. The desktop chooser cannot run

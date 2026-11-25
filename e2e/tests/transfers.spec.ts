@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
@@ -76,13 +76,6 @@ test("a file is downloaded, verified by hash on both ends, and never overwritten
 
   const results = await new AxeBuilder({ page }).include('section[aria-label="Transfers"]').analyze();
   expect(results.violations).toEqual([]);
-  // the panel as it looks (kept in .run for a person to look at; not an assertion)
-  await panel.screenshot({ path: path.resolve(here, "../.run/transfers-panel.png") });
-
-  // leave the shared run as it was found: the other specs know nothing of this host or folder
-  const hosts = (await (await page.request.get(`${API}/api/hosts`)).json()) as { hosts: { id: number; name: string }[] };
-  const mine = hosts.hosts.find((h) => h.name === "Transfer host");
-  if (mine) await page.request.post(`${API}/api/hosts/${mine.id}/delete`, { data: {} });
-  fs.rmSync(incoming, { recursive: true, force: true });
-  fs.rmSync(remoteFile, { force: true });
+  // the panel as it looks (kept in test-results for a person to look at; not an assertion)
+  await panel.screenshot({ path: path.resolve(here, "../test-results/transfers-panel.png") });
 });

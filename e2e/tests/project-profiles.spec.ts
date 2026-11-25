@@ -1,13 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // A project's own tool profile (ADR 0068, slice 6): the folder has a run of a synthetic HOG-style tool that Vesqira does not ship
-// and .vesqira/profiles/hog.json that declares how to read it (made by start-api.sh). The scan lists the run and says whose profile
+// and .vesqira/profiles/hog.json that declares how to read it (made by prepare.sh). The scan lists the run and says whose profile
 // reads it; only the person's Import registers anything, and the run page says the profile came from the project folder.
-//
-// The file name sorts last on purpose: opening a project registers its FITS headers into the catalog the other specs share.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FOLDER = path.resolve(here, "../.run/project/own-tool-study");
 const out = path.resolve(here, "../test-results");

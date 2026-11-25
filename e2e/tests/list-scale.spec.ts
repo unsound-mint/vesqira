@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 
 // The dataset and run lists with 5000 rows each (Stage P). The API answers the two list routes with synthetic rows (the
@@ -32,7 +32,6 @@ async function open(page: Page, narrow = false) {
   await page.reload();
   // narrow screens show the explorer only when asked
   if (narrow) await page.getByRole("button", { name: "Toggle explorer" }).click();
-  // other specs may have left a virtual subset behind, which is one more row of the real list
   await expect.poll(async () => Number(await list(page, "Datasets").getAttribute("data-rows"))).toBeGreaterThanOrEqual(N);
   return Date.now() - t0;
 }

@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +9,7 @@ import { API } from "../ports";
 // Relative orientation (ADR 0047): a declared orientation map against a catalog with a declared angle, run from the map's
 // inspector, gives an agreement statistic with its chance level, a histogram and segment figure, and a table to download.
 // Four stars sit around the centre of the tangential fixture field, each with the field's direction at its place, so the
-// alignment measure is near 1. Runs last (the name) because it adds datasets to the shared instance.
+// alignment measure is near 1.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");

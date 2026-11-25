@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 
 // Standing approvals (ADR 0074), the screens only. The relay needs a group server on TLS with a second account, so these answer

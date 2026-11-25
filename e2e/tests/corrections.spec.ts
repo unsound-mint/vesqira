@@ -1,11 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // WCS and unit corrections (ADR 0061) in the real app: correct a WCS keyword and the unit the file states, see the effect before
 // saving (coordinates before and after, what depends on the dataset), save with a reason, see the readout say it is a correction,
-// and revert by a new record. Runs last (the name): it adds corrections to the shared instance.
+// and revert by a new record.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");

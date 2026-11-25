@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
@@ -36,8 +36,6 @@ async function openDataset(page: Page, file: string) {
   await page.getByRole("list", { name: "Datasets" }).getByRole("button", { name: new RegExp(file.replace(".", "\\.")) }).click();
   await expect(page.locator('canvas[aria-label*="pixels"]').first()).toBeVisible({ timeout: 30_000 });
 }
-
-test.afterAll(() => hostDown(false));
 
 test("a prepared cube keeps working, marked as a copy, when the host goes away", async ({ page }) => {
   fs.copyFileSync(path.join(remoteRoot, "remote_cube.fits"), path.join(remoteRoot, "offline_cube.fits"));

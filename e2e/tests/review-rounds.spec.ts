@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,25 +8,11 @@ import { API } from "../ports";
 // Review rounds (ADR 0073): publish round 1 and let a reviewer comment on a figure, then change a caption, drop one figure and add
 // another, publish round 2. The reviewer opening the new link sees what changed, a marker in words on each figure and the round 1
 // comment on the same figure, read-only. Revoking round 1 takes the earlier round's text and comments out of the new link at once.
-// Everything the test makes is revoked and archived through the API at the end. Runs after the share-view spec (the name).
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");
 const inspector = (page: Page) => page.getByRole("complementary", { name: "Inspector" });
 const BOARD = "Rounds board";
-
-// Leaves nothing on the shared instance: revokes the links, archives the board and its figures. Called before the test too, so a
-// retry after a failed attempt starts from a clean state and finds no second board or figure of the same name.
-async function cleanUp(page: Page) {
-  const boards = (await (await page.request.get(`${API}/api/boards`)).json()) as { boards: { id: number; title: string }[] };
-  for (const b of boards.boards.filter((x) => x.title === BOARD)) {
-    const snaps = (await (await page.request.get(`${API}/api/boards/${b.id}/snapshots`)).json()) as { snapshots: { id: number; revoked: boolean }[] };
-    for (const sn of snaps.snapshots) if (!sn.revoked) await page.request.post(`${API}/api/snapshots/${sn.id}/revoke`, { data: {} });
-    await page.request.post(`${API}/api/boards/${b.id}/archive`, { data: {} });
-  }
-  const figs = (await (await page.request.get(`${API}/api/figures`)).json()) as { figures: { id: number; title: string }[] };
-  for (const f of figs.figures.filter((x) => /^Rounds [ABC]$/.test(x.title))) await page.request.post(`${API}/api/figures/${f.id}/archive`, { data: {} });
-}
 
 async function expectNoAxeViolations(page: Page, skip: string[] = []) {
   const r = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).disableRules(skip).analyze();
@@ -83,7 +69,6 @@ test("round 2 tells the reviewer what changed and carries round 1's comment", as
   let boardId = 0;
   const contexts: { close(): Promise<void> }[] = [];
   try {
-    await cleanUp(page);
     await page.goto("/");
     await openCube(page);
     await saveOnBoard(page, "Rounds A", true);
@@ -177,6 +162,5 @@ test("round 2 tells the reviewer what changed and carries round 1's comment", as
     await expect(r1.getByRole("alert")).toBeVisible();
   } finally {
     for (const c of contexts) await c.close();
-    await cleanUp(page);
   }
 });

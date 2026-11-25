@@ -1,16 +1,15 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { API } from "../ports";
 
 // Spectral smoothing and the family view (ADR 0070) through the real API, worker and built app: smooth a cube with two boxcar widths,
 // see the family recognised from the records, compare it on one scale with an agreement panel, and check the numbers are stated in words.
-// Runs last (the name): it adds datasets to the shared instance.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");
-const shots = path.resolve(here, "../.run");
+const shots = path.resolve(here, "../test-results");
 
 type Ds = { id: number; name: string };
 

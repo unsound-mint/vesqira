@@ -1,12 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import path from "node:path";
 import { API } from "../ports";
 import { fileURLToPath } from "node:url";
 
 // Virtual subsets (ADR 0063) in the real app: define a window onto a cube (a box, every second pixel, a channel range) without
 // writing anything, see it listed under its source marked as virtual, read what it resolved to and a coordinate through it, then write
-// it as an ordinary file and find that dataset. Runs last (the name): it adds datasets to the shared instance.
+// it as an ordinary file and find that dataset.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");

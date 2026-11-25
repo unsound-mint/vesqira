@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import { copyFileSync, openSync, readFileSync, readSync, closeSync, statSync, utimesSync, writeSync } from "node:fs";
 import path from "node:path";
@@ -9,7 +9,7 @@ import { API } from "../ports";
 // ADR 0042, section 5: a stored figure is drawn again from its scene with the viewer's own renderer, says what changed in
 // its files before it does, never replaces the original, and exports SVG whose vector layers are the same marks as the
 // screen. The CPU renderer is forced for the pixel comparison, as for the renderer-equivalence test (the GPU path agrees
-// with it to one colour step, ADR 0034). Named zzzz- so it runs after the specs that count figures.
+// with it to one colour step, ADR 0034).
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");

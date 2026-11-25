@@ -1,12 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { API } from "../ports";
 
 // Typed masks (ADR 0055) in the real app: make the no-value mask and a saturation mask of a cube, see them hatched on the plane with
-// a legend in words, and apply one of them to statistics with an explicit policy that the result records. Runs last (the name): it
-// adds masks and a dataset to the shared instance.
+// a legend in words, and apply one of them to statistics with an explicit policy that the result records.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");
