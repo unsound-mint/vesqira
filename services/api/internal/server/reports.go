@@ -690,6 +690,7 @@ func (s *Server) freeze(ws workspace.ID, rep reports.Report, space string, withA
 			}
 			if len(fig.Provenance) > 0 {
 				if err := json.Unmarshal(fig.Provenance, &p); err != nil {
+					p.Run = nil // a run decoded in part would be judged on settings it did not finish reading
 					f.Warnings = append(f.Warnings, fmt.Sprintf("The provenance of figure %q cannot be read, so its code state and run settings could not be checked.", fig.Title))
 				}
 			}
