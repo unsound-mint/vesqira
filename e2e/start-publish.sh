@@ -6,8 +6,8 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 run="$root/e2e/.run-publish"
 rm -rf "$run"
 mkdir -p "$run"
-# Playwright starts this before global-setup.ts runs prepare.sh, which deletes .run, so the server cannot use that run's API binary
-# and builds its own into .run-publish. The Go build cache makes the second build cheap.
+# This server lives for the whole run, but .run is deleted and restored for every spec file (fixtures.ts) and by prepare.sh, so it
+# builds its own binary into .run-publish. The Go build cache makes the second build cheap.
 (cd "$root/services/api" && go build -buildvcs=false -o "$run/api" .)
 "$run/api" publish-server add-publisher --data-dir "$run/data" --name e2e | grep -oE '[A-Za-z0-9_-]{40,}' | head -1 > "$run/key"
 exec "$run/api" publish-server --addr 127.0.0.1:${VESQIRA_PUBLISH_PORT:?} --data-dir "$run/data" --web-dist "$root/apps/web/dist"

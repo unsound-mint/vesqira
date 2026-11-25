@@ -35,7 +35,7 @@ export default tseslint.config(
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
       // The compiler rules (refs, set-state-in-effect, purity, preserve-manual-memoization, immutability, globals) are not enabled:
-      // the app reads refs in render and sets state in effects by design, and plugin 7.1.1 reports about 170 sites for them.
+      // plugin 7.1.1 reports about 170 sites for them and they have not been reviewed one by one.
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-floating-promises": "error",
       // An async handler on a JSX prop is the normal React shape; the handlers here catch into component state.
