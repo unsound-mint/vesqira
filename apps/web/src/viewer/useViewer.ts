@@ -5,7 +5,7 @@ import type { PolicyChoice } from "../catalog/MaskPolicies";
 import { useMasks } from "./useMasks";
 import { expandPreview, getAxial, isVirtualId, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
 import { isOfflineMissing, setOfflineMissing } from "../api/offlineState";
-import { newRequestId } from "../api/http";
+import { newRequestId, isAbort } from "../api/http";
 import type { AxialStats, Conversions, Converted, Coord, LineShape, Plane, RegionShape, Spectrum, View } from "../api/planes";
 import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
@@ -27,7 +27,6 @@ export type Pixel = { x: number; y: number };
 export type ConvChoice = { spectral: string; convention: string; frame: string; to: string };
 export const NO_CONV: ConvChoice = { spectral: "", convention: "radio", frame: "", to: "" };
 
-const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 /**

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { addLocation, ApiError, fingerprintLocation, listLocations, removeLocation } from "../api/catalog";
 import type { Dataset, DatasetLocation, LocationList } from "../api/catalog";
-import { Button, Checkbox, PathField } from "../ui";
+import { Button, Checkbox, PathField, formatDay } from "../ui";
 import { bytes } from "./format";
 import { KIND_TEXT, LINK_TEXT, short } from "./identity";
 import s from "./LocationsPanel.module.css";
@@ -11,7 +11,6 @@ type Host = { id: number; name: string };
 const NO_HOSTS: Host[] = [];
 const POLL_MS = 1500;
 
-const day = (iso: string) => iso.slice(0, 10);
 
 /**
  * Where a dataset's bytes are, and what is known about them (ADR 0053): the registered file and any other locations, each
@@ -102,13 +101,13 @@ export function LocationsPanel({ dataset, hosts = NO_HOSTS, onChanged }: { datas
                   <p className={s.fp}>
                     Sampled fingerprint:{" "}
                     {l.sampledFingerprint ? (
-                      <><span className="mono" title={l.sampledFingerprint.value}>{short(l.sampledFingerprint.value)}</span> (computed {day(l.sampledFingerprint.at)} by {l.sampledFingerprint.by})</>
+                      <><span className="mono" title={l.sampledFingerprint.value}>{short(l.sampledFingerprint.value)}</span> (computed {formatDay(l.sampledFingerprint.at)} by {l.sampledFingerprint.by})</>
                     ) : "not computed"}
                   </p>
                   <p className={s.fp}>
                     Full SHA-256:{" "}
                     {l.fullSha256 ? (
-                      <><span className="mono" title={l.fullSha256.value}>{short(l.fullSha256.value)}</span> (computed {day(l.fullSha256.at)} by {l.fullSha256.by})</>
+                      <><span className="mono" title={l.fullSha256.value}>{short(l.fullSha256.value)}</span> (computed {formatDay(l.fullSha256.at)} by {l.fullSha256.by})</>
                     ) : "not computed"}
                   </p>
                   {running ? <p className={s.fp} role="status">{task.state === "queued" ? "Waiting for another full hash to finish." : `Computing the full SHA-256: ${pct}%`}</p> : null}

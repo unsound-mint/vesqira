@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Basis, Button, Input, ScrollTable, Select } from "../ui";
 import { QueueNote, useQueueReason } from "../ui/QueueNote";
-import { newRequestId } from "../api/http";
+import { newRequestId, isAbort } from "../api/http";
 import { getCellMask, getSigmav, makeClassMaps } from "../api/rohsa";
 import type { RohsaClassMaps, RohsaReviewRequest, RohsaSigmav } from "../api/rohsa";
 import { CNM_SIGMA_DEFAULT_KMS } from "./rohsa";
@@ -19,7 +19,6 @@ import { cellRange, cellsOf, decodeMask, key, parseBins, parseEdges, provenanceO
 import s from "./GaussianReview.module.css";
 
 type Weight = NonNullable<RohsaReviewRequest["weight"]>;
-const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const num = (v: number) => String(Number(v.toPrecision(4)));
 
 type Shown = { d: RohsaSigmav; req: RohsaReviewRequest };

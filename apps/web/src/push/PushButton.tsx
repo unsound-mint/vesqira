@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { ApiError } from "../api/http";
+import { errorMessage } from "../api/http";
 import { groupLink, pushPreflight, queuePush } from "../api/push";
 import type { GroupLink, PushKind } from "../api/push";
 import { Button } from "../ui";
 
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
 
 let linkOnce: Promise<GroupLink | null> | null = null;
 /** Forget the remembered link, after linking or unlinking on the Group server page. */
@@ -49,7 +48,7 @@ export function PushButton({ kind, id }: { kind: PushKind; id: number }) {
       const e = await queuePush(kind, id, p.hash);
       setStatus(e.status === "waiting: queued" ? "queued" : e.status);
     } catch (e) {
-      setStatus(message(e));
+      setStatus(errorMessage(e));
     } finally {
       setBusy(false);
     }

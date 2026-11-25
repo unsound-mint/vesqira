@@ -1,7 +1,7 @@
 import { useOfflineView } from "../api/offlineState";
 import s from "./OfflineBanner.module.css";
+import { formatWhen } from "../ui";
 
-const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 /**
  * Said whenever the plane, view or spectrum on screen came from an offline copy (ADR 0059): that it is a copy, when it was taken,
@@ -16,7 +16,7 @@ export function OfflineBanner({ datasetId }: { datasetId: number | null }) {
   return (
     <div className={s.banner} role="status" data-testid="offline-banner">
       <p className={s.line}>
-        <strong>Offline copy</strong> · taken {when(copy.takenAt)} · the host is not being reached
+        <strong>Offline copy</strong> · taken {formatWhen(copy.takenAt)} · the host is not being reached
       </p>
       {missing ? <p className={s.missing}>{missing}</p> : null}
       <details className={s.more}>

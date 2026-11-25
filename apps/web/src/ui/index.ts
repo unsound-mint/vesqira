@@ -2,6 +2,7 @@ export { AccessBadge } from "./AccessBadge";
 export { Basis, BasisNote, leadClause } from "./Basis";
 export { Button, IconButton, LinkButton } from "./Button";
 export { ErrorReference } from "./ErrorReference";
+export { formatDay, formatWhen } from "./dates";
 export { formatDuration, parseTime, slurmLimitGloss } from "./duration";
 export { Checkbox, Switch, Select, Input, Slider } from "./Controls";
 export { FilterBox } from "./FilterBox";

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "../api/catalog";
+import { isAbort } from "../api/http";
 import { postLink } from "../api/link";
 import type { LinkReply } from "../api/link";
 import { regionToAsk, visibleRegion } from "../scene/link";
@@ -11,7 +12,6 @@ const IDLE_CHANNEL: ChannelState = { status: "idle" };
 const SETTLE_MS = 120; // a zoom or pan gesture settles before the worker is asked
 
 const reason = (e: unknown) => (e instanceof ApiError ? e.message : "The link could not be computed.");
-const aborted = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 
 function skyOf(r: LinkReply): SkyState {
   const s = r.sky;
@@ -58,7 +58,7 @@ export function useSkyLink(enabled: boolean, from: number | null, to: number | n
       postLink(from, { otherId: to, region: kept }, ac.signal)
         .then((r) => setState({ key: pair, s: skyOf(r) }))
         .catch((e: unknown) => {
-          if (!aborted(e)) setState({ key: pair, s: { status: "refused", refused: reason(e) } });
+          if (!isAbort(e)) setState({ key: pair, s: { status: "refused", refused: reason(e) } });
         });
     }, SETTLE_MS);
     return () => {
@@ -81,7 +81,7 @@ export function useChannelLink(enabled: boolean, from: number | null, to: number
     postLink(from, { otherId: to, channels: true }, ac.signal)
       .then((r) => setState({ key: pair, s: channelsOf(r) }))
       .catch((e: unknown) => {
-        if (!aborted(e)) setState({ key: pair, s: { status: "refused", refused: reason(e) } });
+        if (!isAbort(e)) setState({ key: pair, s: { status: "refused", refused: reason(e) } });
       });
     return () => ac.abort();
   }, [enabled, from, to, pair]);

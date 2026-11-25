@@ -5,7 +5,7 @@ import { createFigure } from "../api/boards";
 import type { Figure } from "../api/boards";
 import { getChannelGrid, getPanel } from "../api/channelmaps";
 import type { ChannelGridPlan, GridPanel } from "../api/channelmaps";
-import { ApiError, newRequestId } from "../api/http";
+import { ApiError, newRequestId, isAbort } from "../api/http";
 import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import type { Plane } from "../api/planes";
 import { lut } from "./colormaps";
@@ -16,7 +16,6 @@ import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import s from "./ChannelGrid.module.css";
 
-const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const NODATA = GRID_NODATA;
 const GRID_COLORMAPS: { id: ColormapId; label: string }[] = [{ id: "viridis", label: "Viridis" }, { id: "inferno", label: "Inferno" }, { id: "gray", label: "Gray" }];
 

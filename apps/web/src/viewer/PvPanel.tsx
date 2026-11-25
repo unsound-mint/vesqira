@@ -3,7 +3,7 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Input, Select } from "../ui";
 import { getPv } from "../api/channelmaps";
 import type { PvDiagram } from "../api/channelmaps";
-import { ApiError, newRequestId } from "../api/http";
+import { ApiError, newRequestId, isAbort } from "../api/http";
 import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import { lut } from "./colormaps";
 import { lineValid, pathLength } from "./region";
@@ -13,7 +13,6 @@ import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import s from "./PvPanel.module.css";
 
-const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const NODATA: [[number, number, number], [number, number, number]] = [[27, 34, 44], [85, 98, 117]];
 const num = (v: number) => Number(v.toPrecision(5)).toString();
 

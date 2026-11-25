@@ -13,6 +13,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Whether a rejection is the caller's own `AbortController` cancelling a request, which is never an error to show. */
+export const isAbort = (e: unknown): boolean => e instanceof DOMException && e.name === "AbortError";
+
+/** The words of a rejection for the screen: the server's own message for an ApiError or any Error, else `fallback`. */
+export const errorMessage = (e: unknown, fallback = "Something went wrong."): string => (e instanceof Error && e.message ? e.message : fallback);
+
 type ErrorListener = (e: ApiError & { requestId: string }) => void;
 const errorListeners = new Set<ErrorListener>();
 
@@ -99,7 +105,7 @@ export async function requestRaw(url: string, init?: RequestInit, opts: RequestO
   try {
     res = await fetch(url, init);
   } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") throw e;
+    if (isAbort(e)) throw e;
     throw unreachable(url);
   }
   if (!res.ok && !opts.allow?.includes(res.status)) {

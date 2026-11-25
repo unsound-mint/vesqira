@@ -4,7 +4,7 @@ import { ApiError } from "../api/http";
 import type { Coord, View } from "../api/planes";
 import { deleteSubset, editSubset, getSubset, getSubsetCoord, getSubsetView, materialiseSubset, repinSubset } from "../api/subsets";
 import type { SubsetDetail, SubsetMaterialised, SubsetView } from "../api/subsets";
-import { Button, Input, Pill } from "../ui";
+import { Button, Input, Pill, formatWhen } from "../ui";
 import { useMasks } from "../viewer/useMasks";
 import { MaskCarry, carryChoices } from "./MaskCarry";
 import type { CarryState } from "./MaskCarry";
@@ -13,7 +13,6 @@ import { SubsetForm } from "./SubsetForm";
 import { describe, fieldsOf, summaryLine } from "./subsets";
 import s from "./SubsetPage.module.css";
 
-const when = (t: string) => new Date(t).toLocaleString();
 const num = (v: number | null | undefined, digits = 6) => (v === null || v === undefined ? EM : String(Number(v.toPrecision(digits))));
 
 /**
@@ -142,9 +141,9 @@ export function SubsetPage({ id, embedded = false, onChanged, onOpenDataset, onC
         <dt>Reason</dt>
         <dd>{sub.reason}</dd>
         <dt>Version</dt>
-        <dd>{sub.version} ({sub.kind}), {when(sub.editedAt)}</dd>
+        <dd>{sub.version} ({sub.kind}), {formatWhen(sub.editedAt)}</dd>
         <dt>Pinned to</dt>
-        <dd className="mono">{sub.pinned.identity ? `${sub.pinned.identity.slice(0, 22)}…` : "no recorded content identity"}, {bytes(sub.pinned.size)}, {when(sub.pinned.modifiedAt)}</dd>
+        <dd className="mono">{sub.pinned.identity ? `${sub.pinned.identity.slice(0, 22)}…` : "no recorded content identity"}, {bytes(sub.pinned.size)}, {formatWhen(sub.pinned.modifiedAt)}</dd>
       </dl>
 
       {viewErr ? <p role="alert" className={s.err}>{viewErr}</p> : null}
@@ -209,7 +208,7 @@ export function SubsetPage({ id, embedded = false, onChanged, onOpenDataset, onC
             const files = detail.materialised.filter((m) => m.version === v.version);
             return (
               <li key={v.version}>
-                <strong>Version {v.version}</strong> ({v.kind}), {when(v.at)}: {v.name}. {describe(v.definition)}. <span className={s.note}>{v.reason}</span>
+                <strong>Version {v.version}</strong> ({v.kind}), {formatWhen(v.at)}: {v.name}. {describe(v.definition)}. <span className={s.note}>{v.reason}</span>
                 {files.map((m) => <span key={m.datasetId}> <button type="button" className={s.link} onClick={() => onOpenDataset(m.datasetId)}>written file {m.datasetId}</button></span>)}
               </li>
             );

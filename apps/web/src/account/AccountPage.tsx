@@ -5,13 +5,11 @@ import {
   resetSecondFactor, revokeToken, signOut, signOutEverywhere,
 } from "../api/accounts";
 import type { AccessToken, Account, AuthState, Scope } from "../api/accounts";
-import { ApiError } from "../api/http";
-import { Button, Checkbox, Input, LinkButton } from "../ui";
+import { errorMessage } from "../api/http";
+import { Button, Checkbox, Input, LinkButton, formatDay } from "../ui";
 import { RecoveryCodes, TotpEnrolment } from "./SignInPage";
 import s from "./Account.module.css";
 
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
-const day = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : "never");
 const SCOPES: { scope: Scope; label: string }[] = [
   { scope: "read", label: "read: everything a signed-in reader sees" },
   { scope: "write", label: "write: read, and the same changes you can make (never delete, publish or manage accounts)" },
@@ -22,7 +20,7 @@ const SCOPES: { scope: Scope; label: string }[] = [
 export function AccountPage() {
   const [state, setState] = useState<AuthState | null>(null);
   const [error, setError] = useState("");
-  const refresh = useCallback(() => authState().then(setState, (e) => setError(message(e))), []);
+  const refresh = useCallback(() => authState().then(setState, (e) => setError(errorMessage(e))), []);
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -58,7 +56,7 @@ function Confirm({ minutes, onDone }: { minutes: number; onDone: (s: AuthState) 
     e.preventDefault();
     setBusy(true);
     setError("");
-    confirmSignIn({ password, code }).then(onDone, (err) => setError(message(err))).finally(() => setBusy(false));
+    confirmSignIn({ password, code }).then(onDone, (err) => setError(errorMessage(err))).finally(() => setBusy(false));
   };
   return (
     <section className={s.card}>
@@ -84,7 +82,7 @@ function LinkComputer({ recent }: { recent: boolean }) {
   const [relay, setRelay] = useState(false);
   const make = () => {
     setError("");
-    createToken({ name: "Linked computer", scopes: relay ? ["push", "relay"] : ["push"], days: 30 }).then((r) => setShown(r.token), (e) => setError(message(e)));
+    createToken({ name: "Linked computer", scopes: relay ? ["push", "relay"] : ["push"], days: 30 }).then((r) => setShown(r.token), (e) => setError(errorMessage(e)));
   };
   return (
     <section className={s.card}>
@@ -117,7 +115,7 @@ function Tokens({ recent }: { recent: boolean }) {
   const [days, setDays] = useState("30");
   const [shown, setShown] = useState("");
   const [error, setError] = useState("");
-  const load = useCallback(() => listTokens().then((r) => setTokens(r.tokens), (e) => setError(message(e))), []);
+  const load = useCallback(() => listTokens().then((r) => setTokens(r.tokens), (e) => setError(errorMessage(e))), []);
   useEffect(() => {
     void load();
   }, [load]);
@@ -128,7 +126,7 @@ function Tokens({ recent }: { recent: boolean }) {
       setShown(r.token);
       setName("");
       void load();
-    }, (err) => setError(message(err)));
+    }, (err) => setError(errorMessage(err)));
   };
   return (
     <section className={s.card}>
@@ -149,10 +147,10 @@ function Tokens({ recent }: { recent: boolean }) {
               <tr key={t.id}>
                 <td>{t.name}</td>
                 <td>{t.scopes.join(", ")}</td>
-                <td>{day(t.createdAt)}</td>
-                <td>{day(t.expiresAt)}</td>
-                <td>{day(t.lastUsedAt)}</td>
-                <td>{t.revokedAt ? `revoked ${day(t.revokedAt)}` : <Button variant="danger" onClick={() => void revokeToken(t.id).then(load, (e) => setError(message(e)))}>Revoke</Button>}</td>
+                <td>{formatDay(t.createdAt)}</td>
+                <td>{formatDay(t.expiresAt)}</td>
+                <td>{t.lastUsedAt ? formatDay(t.lastUsedAt) : "never"}</td>
+                <td>{t.revokedAt ? `revoked ${formatDay(t.revokedAt)}` : <Button variant="danger" onClick={() => void revokeToken(t.id).then(load, (e) => setError(errorMessage(e)))}>Revoke</Button>}</td>
               </tr>
             ))}
           </tbody>
@@ -191,7 +189,7 @@ function SecondFactor({ recent, left, onChanged }: { recent: boolean; left: numb
       {error ? <p className={s.error} role="alert">{error}</p> : null}
       {codes || replacing ? null : (
         <div className={s.row}>
-          <Button disabled={!recent} onClick={() => void newRecoveryCodes().then((r) => setCodes(r.recoveryCodes), (e) => setError(message(e)))}>New recovery codes</Button>
+          <Button disabled={!recent} onClick={() => void newRecoveryCodes().then((r) => setCodes(r.recoveryCodes), (e) => setError(errorMessage(e)))}>New recovery codes</Button>
           <Button disabled={!recent} onClick={() => setReplacing(true)}>Move to a new phone</Button>
         </div>
       )}
@@ -202,7 +200,7 @@ function SecondFactor({ recent, left, onChanged }: { recent: boolean; left: numb
 function Accounts({ recent, self }: { recent: boolean; self: string }) {
   const [accounts, setAccounts] = useState<Account[] | null>(null);
   const [error, setError] = useState("");
-  const load = useCallback(() => listAccounts().then((r) => setAccounts(r.accounts), (e) => setError(message(e))), []);
+  const load = useCallback(() => listAccounts().then((r) => setAccounts(r.accounts), (e) => setError(errorMessage(e))), []);
   useEffect(() => {
     if (recent) void load();
   }, [recent, load]);
@@ -222,7 +220,7 @@ function Accounts({ recent, self }: { recent: boolean; self: string }) {
                 <td>{a.secondFactor ? "enrolled" : "not enrolled"}</td>
                 <td>
                   {a.secondFactor && a.id !== self ? (
-                    <Button variant="danger" onClick={() => { if (confirm(`Remove ${a.name}'s second factor, sign them out and revoke their access tokens? They enrol again at their next sign-in.`)) void resetSecondFactor(a.id).then(load, (e) => setError(message(e))); }}>Reset second factor</Button>
+                    <Button variant="danger" onClick={() => { if (confirm(`Remove ${a.name}'s second factor, sign them out and revoke their access tokens? They enrol again at their next sign-in.`)) void resetSecondFactor(a.id).then(load, (e) => setError(errorMessage(e))); }}>Reset second factor</Button>
                   ) : null}
                 </td>
               </tr>
