@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { getRegionHistogram } from "../api/planes";
 import type { RegionHistogramResult, RegionShape } from "../api/planes";
 import { ApiError, isAbort } from "../api/http";
@@ -14,11 +14,13 @@ export type MaskedHistogram = { result: RegionHistogramResult | null; error: str
 export function useMaskedHistogram(datasetId: number | null, channel: number, region: RegionShape | null, min: number | null, max: number | null, bins: number, uses: MaskUse[]): MaskedHistogram | null {
   const key = region && datasetId !== null && min !== null && max !== null && uses.length > 0 ? JSON.stringify([datasetId, channel, region, min, max, bins, uses]) : null;
   const [got, setGot] = useState<{ key: string; result: RegionHistogramResult | null; error: string | null } | null>(null);
+  // The key says when the question changed; the request reads its parts as they are when it is sent.
+  const count = useEffectEvent((signal: AbortSignal) => getRegionHistogram(datasetId!, channel, region!, min!, max!, bins, uses, signal));
   useEffect(() => {
     if (key === null) return;
     const ac = new AbortController();
     const t = setTimeout(() => {
-      getRegionHistogram(datasetId!, channel, region!, min!, max!, bins, uses, ac.signal)
+      count(ac.signal)
         .then((result) => setGot({ key, result, error: null }))
         .catch((e: unknown) => {
           if (isAbort(e)) return;

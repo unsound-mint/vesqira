@@ -38,6 +38,9 @@ export type Mark =
   /** A label at a picture position; size and offset are in output pixels so text does not scale with zoom. */
   | { type: "text"; role: "grid" | "beam"; x: number; y: number; text: string; color: OverlayColor; anchor: "start" | "middle" | "end"; baseline: "top" | "middle" | "bottom" };
 
+/** The part of a scene that decides what is drawn: the overlays, and which dataset is the base. A view change draws the same marks. */
+export type DrawnScene = Pick<Scene, "overlays"> & { base: Pick<Scene["base"], "datasetId"> };
+
 /** What drawing needs besides the scene: the base plane as read, and facts the catalog declares about it. */
 export type DrawContext = {
   plane: Plane;
@@ -61,7 +64,7 @@ export function strokeOf(o: SceneOverlay, kind: keyof typeof DEFAULT_WIDTH): Str
   return { color: s.color ?? "white", width: s.width ?? DEFAULT_WIDTH[kind], dashed: s.dash === "dashed" };
 }
 
-type Renderer<K extends OverlayKind> = (overlay: OverlayOf<K>, scene: Scene, ctx: DrawContext) => Mark[];
+type Renderer<K extends OverlayKind> = (overlay: OverlayOf<K>, scene: DrawnScene, ctx: DrawContext) => Mark[];
 
 /** Orientation lines: of the base map itself from the plane on screen, or of another map from the worker's samples. */
 const orientation: Renderer<"orientation"> = (o, scene, ctx) => (o.datasetId === scene.base.datasetId ? ownLines(o, ctx) : otherLines(o, scene, ctx));
@@ -88,7 +91,7 @@ function ownLines(o: OverlayOf<"orientation">, { plane, interp, reliability, sca
 }
 
 /** Samples of another dataset's orientation map, placed and turned into the base's pixel frame by the worker. */
-function otherLines(o: OverlayOf<"orientation">, _scene: Scene, { plane, geometry }: DrawContext): Mark[] {
+function otherLines(o: OverlayOf<"orientation">, _scene: DrawnScene, { plane, geometry }: DrawContext): Mark[] {
   const g = readyGeometry(geometry, o.id, "orientation");
   if (!g) return [];
   const h = plane.head.height;
@@ -282,7 +285,7 @@ const registry: { [K in OverlayKind]?: Renderer<K> } = { orientation, regions, c
 export const drawnKinds = (): OverlayKind[] => Object.keys(registry) as OverlayKind[];
 
 /** The visible overlays' marks, one layer per overlay in scene order (the first at the bottom). */
-export function sceneLayers(scene: Scene, ctx: DrawContext): { id: string; kind: OverlayKind; marks: Mark[] }[] {
+export function sceneLayers(scene: DrawnScene, ctx: DrawContext): { id: string; kind: OverlayKind; marks: Mark[] }[] {
   const out: { id: string; kind: OverlayKind; marks: Mark[] }[] = [];
   for (const o of scene.overlays) {
     const draw = registry[o.kind] as Renderer<typeof o.kind> | undefined;
@@ -292,7 +295,7 @@ export function sceneLayers(scene: Scene, ctx: DrawContext): { id: string; kind:
   return out;
 }
 
-export const sceneMarks = (scene: Scene, ctx: DrawContext): Mark[] => sceneLayers(scene, ctx).flatMap((l) => l.marks);
+export const sceneMarks = (scene: DrawnScene, ctx: DrawContext): Mark[] => sceneLayers(scene, ctx).flatMap((l) => l.marks);
 
 /** How each role looks on a figure (the viewer styles the same roles with CSS tokens in PlaneViewer.module.css). */
 export const FIGURE_STROKE: Record<Exclude<MarkRole, "orientation">, { color: string; width: number; dash: number[] }> = {

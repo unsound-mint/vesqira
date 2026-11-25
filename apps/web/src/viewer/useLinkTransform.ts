@@ -42,15 +42,26 @@ export function useSkyLink(enabled: boolean, from: number | null, to: number | n
   const [state, setState] = useState<{ key: string; s: SkyState }>({ key: "", s: IDLE_SKY });
   const [kept, setKept] = useState<Region | null>(null);
   const pair = `${from}>${to}|${stamp}`;
-  const view = scene?.view;
-  const win = useMemo(() => (view && image ? visibleRegion(view, image, pane) : null), [view?.zoom, view?.centre?.x, view?.centre?.y, image?.w, image?.h, pane?.w, pane?.h]);
+  const zoom = scene?.view.zoom;
+  const cx = scene?.view.centre?.x;
+  const cy = scene?.view.centre?.y;
+  const iw = image?.w;
+  const ih = image?.h;
+  const pw = pane?.w;
+  const ph = pane?.h;
+  // Callers build `image` and `pane` anew on every render, so the window is computed from their numbers, not from the objects.
+  const win = useMemo(() => {
+    if (zoom === undefined || iw === undefined || ih === undefined) return null;
+    const view = cx === undefined || cy === undefined ? { zoom } : { zoom, centre: { x: cx, y: cy } };
+    return visibleRegion(view, { w: iw, h: ih }, pw === undefined || ph === undefined ? null : { w: pw, h: ph });
+  }, [zoom, cx, cy, iw, ih, pw, ph]);
   useEffect(() => {
     setKept(null);
   }, [pair]);
   useEffect(() => {
     if (!enabled || !win) return;
     setKept((k) => regionToAsk(k, win));
-  }, [enabled, win?.x0, win?.x1, win?.y0, win?.y1, pair]);
+  }, [enabled, win, pair]);
   useEffect(() => {
     if (!enabled || from === null || to === null || !kept) return;
     const ac = new AbortController();
@@ -65,7 +76,7 @@ export function useSkyLink(enabled: boolean, from: number | null, to: number | n
       clearTimeout(t);
       ac.abort();
     };
-  }, [enabled, from, to, kept?.x0, kept?.x1, kept?.y0, kept?.y1, pair]);
+  }, [enabled, from, to, kept, pair]);
   if (!enabled) return IDLE_SKY;
   if (state.key !== pair) return { status: "loading" };
   return state.s;

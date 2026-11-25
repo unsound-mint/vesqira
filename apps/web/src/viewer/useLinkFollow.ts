@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { follow, followWcs, linkMap } from "../scene/link";
 import type { ChannelState, LinkGroup, PaneId, SkyMap, SkyState } from "../scene/link";
 import type { Viewer } from "./useViewer";
@@ -36,7 +36,8 @@ export function useLinkFollow(group: LinkGroup | null, v: Panes, active: PaneId,
   const viewB = sb ? JSON.stringify(sb.view) : "";
   const imageA = v.a.view ? { w: v.a.view.width, h: v.a.view.height } : null;
   const imageB = v.b.view ? { w: v.b.view.width, h: v.b.view.height } : null;
-  useEffect(() => {
+  // The effect runs when the key, a channel, a view or a link map changes; what it does reads the rest as it is then.
+  const sync = useEffectEvent(() => {
     if (!group || key === null || !sa || !sb) {
       seen.current = null;
       mine.current = flags();
@@ -79,5 +80,6 @@ export function useLinkFollow(group: LinkGroup | null, v: Panes, active: PaneId,
       if (driver) drive(driver, facet);
       else if (facet === "view" && cur.sky[led.current] !== prev.sky[led.current]) drive(led.current, facet);
     }
-  }, [key, cha, chb, viewA, viewB, active, skyMap.ab, skyMap.ba, chanMap.ab, chanMap.ba]);
+  });
+  useEffect(() => sync(), [key, cha, chb, viewA, viewB, active, skyMap.ab, skyMap.ba, chanMap.ab, chanMap.ba]);
 }

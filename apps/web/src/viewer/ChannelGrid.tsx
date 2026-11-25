@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Button, Input, Select } from "../ui";
 import type { Dataset } from "../api/catalog";
 import { createFigure } from "../api/boards";
@@ -54,6 +54,7 @@ function Panel({ panel, plan, datasetId, shared, cached, onLoaded, colormap, str
   const [data, setData] = useState<Loaded | undefined>(cached);
   const [rid, setRid] = useState<string | null>(null);
   const queued = useQueueReason(want && !data && !error, rid);
+  const loadedEvent = useEffectEvent(onLoaded);
 
   useEffect(() => {
     if (!want || data) return;
@@ -64,21 +65,23 @@ function Panel({ panel, plan, datasetId, shared, cached, onLoaded, colormap, str
       .then((p) => {
         const l = { plane: { head: p.head, data: p.data }, slab: p.slab as Loaded["slab"] };
         setData(l);
-        onLoaded(panel.index, l, null);
+        loadedEvent(panel.index, l, null);
       })
       .catch((e: unknown) => !isAbort(e) && setError(e instanceof ApiError ? e.message : "This panel could not be read."));
     return () => ac.abort(); // a panel that scrolled away, or a plan that changed, stops its read
   }, [want, data, datasetId, panel, plan.step]);
 
+  const lo = shared?.lo;
+  const hi = shared?.hi;
   useEffect(() => {
     const c = canvas.current;
-    if (!c || !data || !shared) return;
+    if (!c || !data || lo === undefined || hi === undefined) return;
     const { plane } = data;
     c.width = plane.head.width;
     c.height = plane.head.height;
-    c.getContext("2d")?.putImageData(new ImageData(paintPixels(plane.data, plane.head.width, plane.head.height, shared, lut(colormap), stretch, NODATA) as Uint8ClampedArray<ArrayBuffer>, plane.head.width, plane.head.height), 0, 0);
-    onLoaded(panel.index, data, c);
-  }, [data, shared?.lo, shared?.hi, colormap, stretch]);
+    c.getContext("2d")?.putImageData(new ImageData(paintPixels(plane.data, plane.head.width, plane.head.height, { lo, hi }, lut(colormap), stretch, NODATA) as Uint8ClampedArray<ArrayBuffer>, plane.head.width, plane.head.height), 0, 0);
+    loadedEvent(panel.index, data, c);
+  }, [data, panel.index, lo, hi, colormap, stretch]);
 
   const none = data && data.plane.head.stats.finite_count === 0;
   return (
@@ -131,12 +134,13 @@ export function ChannelGrid({ v, dataset }: { v: Viewer; dataset: Dataset }) {
     setLimits(null);
     setCustom({ lo: "", hi: "" });
   }, [dataset.id, channels]);
-  useEffect(() => {
+  const adoptViewerUnit = useEffectEvent(() => {
     if (v.conv.spectral && targets.some((t) => t.unit === v.conv.spectral && t.enabled)) {
       setUnit(v.conv.spectral);
       setConvention(v.conv.convention || "radio");
     }
-  }, [dataset.id, v.offers]);
+  });
+  useEffect(() => adoptViewerUnit(), [dataset.id, v.offers]);
 
   const nums = { first: Number(first), last: Number(last), stride: Number(stride), average: Number(average) };
   const bad = [nums.first, nums.last, nums.stride, nums.average].some((n) => !Number.isInteger(n)) || nums.first < 1 || nums.last < nums.first || nums.last > channels || nums.stride < 1 || nums.average < 1 || nums.average > nums.stride

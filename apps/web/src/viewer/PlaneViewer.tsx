@@ -66,20 +66,21 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
   const panStart = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
 
   // the wheel zooms; it has to be a native listener to stop the page scrolling
+  const { zoom, setZoom } = v;
   useEffect(() => {
     const el = box.current;
     if (!el) return;
     const wheel = (e: WheelEvent) => {
       if (!plane) return;
       e.preventDefault();
-      v.setZoom(v.zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2));
+      setZoom(zoom * (e.deltaY < 0 ? 1.2 : 1 / 1.2));
     };
     el.addEventListener("wheel", wheel, { passive: false });
     return () => el.removeEventListener("wheel", wheel);
-  }, [plane, v.zoom]);
+  }, [plane, zoom, setZoom]);
 
   // A canvas keeps the kind of context it first gave out, so the GPU and CPU paths draw on different canvas elements.
-  const outSize = plane && shape.scale > 0 ? outputSize(plane.head.width, plane.head.height, shape.scale) : null;
+  const outSize = useMemo(() => (plane && shape.scale > 0 ? outputSize(plane.head.width, plane.head.height, shape.scale) : null), [plane, shape.scale]);
   const useGpu = !!plane && !!outSize && !gpuOff && GlPlaneRenderer.fits(plane.head.width, plane.head.height, outSize.outW, outSize.outH);
   const canvasKey = useGpu ? "gpu" : "cpu";
 
@@ -117,7 +118,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
     canvas.height = img.height;
     ctx.putImageData(new ImageData(img.pixels, img.width, img.height), 0, 0);
     drawn.current?.(plane);
-  }, [plane, v.colormap, v.stretch, v.range, v.customLimits, v.interp, shape.scale, useGpu, canvasKey]);
+  }, [plane, v.colormap, v.stretch, v.range, v.customLimits, v.interp, shape.scale, useGpu, canvasKey, cv, gpuOff, outSize]);
   useEffect(() => () => { gl.current?.dispose(); gl.current = null; setRendererNote(null); }, []);
 
   function pick(e: MouseEvent<HTMLCanvasElement>) {
@@ -190,15 +191,17 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
   }
 
   // every overlay, in scene order, through the overlay registry (the same marks a saved figure strokes)
+  const sceneOverlays = v.scene?.overlays;
+  const sceneDatasetId = v.scene?.base.datasetId;
   const marks = useMemo(
     () => {
-      if (!v.scene || !plane) return [];
-      const layers = sceneMarks(v.scene, { plane, scale: shape.scale, interp: v.interp, reliability: v.reliability, draft, geometry: v.geometry });
+      if (!sceneOverlays || sceneDatasetId === undefined || !plane) return [];
+      const layers = sceneMarks({ overlays: sceneOverlays, base: { datasetId: sceneDatasetId } }, { plane, scale: shape.scale, interp: v.interp, reliability: v.reliability, draft, geometry: v.geometry });
       // the position-velocity path and the line being drawn are pane gestures, not scene layers: on top of everything
       const h = plane.head.height;
       return [...layers, ...(v.path ? lineMarks(v.path.points, h, "region") : []), ...(lineDraft ? lineMarks(lineDraft.points, h, "draft") : [])];
     },
-    [v.scene?.overlays, v.scene?.base.datasetId, plane, shape.scale, v.interp, v.reliability, draft, v.geometry, v.path, lineDraft],
+    [sceneOverlays, sceneDatasetId, plane, shape.scale, v.interp, v.reliability, draft, v.geometry, v.path, lineDraft],
   );
   const labels = useMemo(() => marks.filter((m): m is Extract<Mark, { type: "text" }> => m.type === "text"), [marks]);
   const sources = useMemo(() => marks.filter((m): m is Extract<Mark, { type: "marker" }> => m.type === "marker"), [marks]);
@@ -212,6 +215,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
   useEffect(() => setDrawScale(shape.scale), [shape.scale, setDrawScale]);
 
   // the viewer's own controls in frame pixels, measured after layout so overlay labels never sit under them
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- measures after every render on purpose; setChrome returns the old array when nothing moved, so it cannot loop
   useLayoutEffect(() => {
     const f = frameEl.current?.getBoundingClientRect();
     if (!f) { setChrome((c) => (c.length ? [] : c)); return; }
