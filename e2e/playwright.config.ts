@@ -14,6 +14,8 @@ export default defineConfig({
   globalSetup: "./global-setup.ts",
   timeout: 180_000,
   expect: { timeout: 15_000 },
+  // One worker: every spec file restarts the API on the same ports (PORTS) and rewrites the same .run folder, so two workers would
+  // collide. Parallel runs need a port block each (VESQIRA_E2E_PORT_BASE) and a run folder each, which is not built.
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
