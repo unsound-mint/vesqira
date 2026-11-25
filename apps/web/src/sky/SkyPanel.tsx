@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Crosshair, Download, ImagePlus, Minus, Plus, Scan } from "lucide-react";
 import type { Dataset } from "../api/catalog";
 import type { SubsetView } from "../api/subsets";
@@ -67,11 +67,11 @@ export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
   const [custom, setCustom] = useState<{ key: string; v: View } | null>(null);
   const [fitAll, setFitAll] = useState(false);
   const [nonce, setNonce] = useState(0);
-  const fitFor = (list: SkyItem[]): View | null => {
+  const fitFor = useCallback((list: SkyItem[]): View | null => {
     const one = !fitAll ? list.find((i) => i.id === datasetId)?.outline : null;
     return fitView(one ? [one.polygon] : list.flatMap((i) => (i.outline ? [i.outline.polygon] : [])));
-  };
-  const fitted = useMemo(() => fitFor(items), [items, datasetId, fitAll]);
+  }, [datasetId, fitAll]);
+  const fitted = useMemo(() => fitFor(items), [items, fitFor]);
   const viewKey = `${frame}|${datasetId}|${fitAll}|${nonce}`;
   const view = (custom && custom.key === viewKey ? custom.v : null) ?? fitted;
   const move = (f: (v: View) => View) => view && setCustom({ key: viewKey, v: f(view) });

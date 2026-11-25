@@ -126,9 +126,9 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
   useEffect(() => {
     setLink(null);
     setTicked([]);
-    if (board) listSnapshots(board.id).then(setSnaps).catch(() => setSnaps([]));
+    if (boardId !== null) listSnapshots(boardId).then(setSnaps).catch(() => setSnaps([]));
     else setSnaps([]);
-  }, [board?.id]);
+  }, [boardId]);
 
   // Undo and redo of this board's edits (ADR 0057). The stack outlives this screen; publishing and replies are not commands.
   const stack = board ? boardStack(board.id) : null;

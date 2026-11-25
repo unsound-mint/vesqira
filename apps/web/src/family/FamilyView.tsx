@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { Button, Checkbox, Input, Select } from "../ui";
 import { newRequestId } from "../api/http";
 import { QueueNote, useQueueReason } from "../ui/QueueNote";
@@ -50,7 +50,7 @@ export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: D
       .then((x) => { setCands(Array.isArray(x) ? x : []); setCandsErr(null); })
       .catch((e) => { setCands([]); setCandsErr(e instanceof Error ? e.message : "the request failed"); });
   }, [datasets.length]);
-  useEffect(() => {
+  const applyPreset = useEffectEvent(() => {
     if (!preset) return;
     setIds(preset.ids.slice(0, MAX));
     setLabels(preset.labels ?? {});
@@ -58,7 +58,8 @@ export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: D
     setExcluded(preset.excluded ?? []);
     setResult(null);
     setErr(null);
-  }, [preset?.nonce]);
+  });
+  useEffect(() => applyPreset(), [preset?.nonce]);
 
   const byId = useMemo(() => new Map(images.map((d) => [d.id, d])), [images]);
   const chosen = ids.map((id) => byId.get(id)).filter((d): d is NonNullable<typeof d> => !!d);

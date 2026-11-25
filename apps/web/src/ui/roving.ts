@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FocusEvent, KeyboardEvent } from "react";
 
 /** The index to move to for a key in a vertical list of `count` items from `from`, or null when the key is not one the list handles. */
@@ -24,12 +24,12 @@ export function useRoving(ids: readonly string[], selectedId?: string | null, re
   const box = useRef<HTMLDivElement>(null);
   const [last, setLast] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
-  const find = (id: string) => Array.from(box.current?.querySelectorAll<HTMLElement>("[data-roving]") ?? []).find((el) => el.dataset.roving === id);
+  const find = useCallback((id: string) => Array.from(box.current?.querySelectorAll<HTMLElement>("[data-roving]") ?? []).find((el) => el.dataset.roving === id), []);
   useEffect(() => {
     if (pending === null) return;
     find(pending)?.focus();
     setPending(null);
-  });
+  }, [pending, find]);
   const stop = last !== null && ids.includes(last) ? last : selectedId != null && ids.includes(selectedId) ? selectedId : (ids[0] ?? null);
   return {
     listProps: {

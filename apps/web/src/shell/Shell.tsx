@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { Columns3, FileText, LifeBuoy, FolderOpen, FolderPlus, LayoutGrid, Server, Table2, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
@@ -106,7 +106,8 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const subs = useSubsets();
   const access = useAccess();
   const [subsetId, setSubsetId] = useState<number | null>(null); // a virtual subset is open in the main area instead of a dataset (ADR 0063)
-  useEffect(() => { void subs.refresh(); }, [cat.allDatasets]); // a changed file makes its subsets stale
+  const refreshSubsets = subs.refresh;
+  useEffect(() => { void refreshSubsets(); }, [cat.allDatasets, refreshSubsets]); // a changed file makes its subsets stale
   const hostOffer = useSyncExternalStore(subscribeHostOffer, getHostOffer); // a file-manager mount of an unregistered host (ADR 0031)
   const rendererNote = useSyncExternalStore(subscribeRendererNote, getRendererNote); // set only when drawing fell back to the CPU
   const { refreshDatasets, refreshRuns } = cat;
@@ -179,11 +180,12 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   useLinkFollow(group, { a: viewerA, b: viewerB }, active, { ab: skyAB, ba: skyBA }, { ab: chAB, ba: chBA }, { a: idA, b: idB });
   // a scene records how its pane was linked, so a figure says how its panes followed each other
   const linkKey = JSON.stringify(sceneLink(group, { a: idA, b: idB }));
-  useEffect(() => {
+  const recordLink = useEffectEvent(() => {
     const l = sceneLink(group, { a: idA, b: idB });
     viewerA.dispatch({ type: "setLink", link: l });
     viewerB.dispatch({ type: "setLink", link: l });
-  }, [linkKey, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]);
+  });
+  useEffect(() => recordLink(), [linkKey, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]);
   // where the hovered pixel of one pane is in the other: the same pixel on one grid, the worker's transform otherwise
   const [outsideIn, setOutsideIn] = useState<PaneId | null>(null);
   function mirror(from: PaneId, p: Pixel | null) {
@@ -250,43 +252,49 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     }
   }, [shared, compareDs, shareReason]);
   useEffect(() => {
-    // a limit changed on the map being worked in becomes the shared one; sharedLimits is read only to skip a no-op write
+    // a limit changed on the map being worked in becomes the shared one; an equal one is kept as it is, so nothing re-renders
     if (!shared) return;
     const c = viewer.customLimits;
-    if (viewer.range === "custom" && c && (!sharedLimits || c[0] !== sharedLimits[0] || c[1] !== sharedLimits[1])) setSharedLimits([c[0], c[1]]);
+    if (viewer.range === "custom" && c) setSharedLimits((cur) => (cur && c[0] === cur[0] && c[1] === cur[1] ? cur : [c[0], c[1]]));
   }, [shared, viewer.customLimits, viewer.range]);
-  useEffect(() => {
+  const followSharedScale = useEffectEvent(() => {
     if (!shared || !sharedLimits) return;
     for (const v of [viewerA, viewerB]) {
       if (v.range !== "custom" || !v.customLimits || v.customLimits[0] !== sharedLimits[0] || v.customLimits[1] !== sharedLimits[1]) {
         v.dispatchFact({ type: "setDisplay", display: { limits: sharedLimits, range: "custom" } }); // follows the shared scale, not a command
       }
     }
-  }, [shared, sharedLimits, viewerA.range, viewerA.customLimits, viewerB.range, viewerB.customLimits]);
+  });
+  useEffect(() => followSharedScale(), [shared, sharedLimits, viewerA.range, viewerA.customLimits, viewerB.range, viewerB.customLimits]);
 
   // both scenes say their colour scale is shared, also after a pane opens another dataset (which starts a new scene)
-  useEffect(() => {
+  const markScaleGroup = useEffectEvent(() => {
     for (const v of [viewerA, viewerB]) v.setScaleGroup(shared ? "compare" : null);
-  }, [shared, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]);
+  });
+  useEffect(() => markScaleGroup(), [shared, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]);
 
   // Is the other map known to share this one's grid? Only then are cursor and channel linked.
+  const shownId = shownImage?.id;
+  const compareDsId = compareDs?.id;
+  const shownModified = shownImage?.modifiedAt;
+  const compareModified = compareDs?.modifiedAt;
   useEffect(() => {
-    if (!shownImage || !compareDs) {
+    if (shownId === undefined || compareDsId === undefined) {
       setCompatState({ status: "idle" });
       return;
     }
     let live = true;
     setCompatState({ status: "loading" });
-    getCompat(shownImage.id, compareDs.id)
+    getCompat(shownId, compareDsId)
       .then((c) => live && setCompatState({ status: "ready", compat: c }))
       .catch((e: unknown) => live && setCompatState({ status: "error", message: e instanceof Error ? e.message : "Could not compare the grids." }));
     return () => {
       live = false;
     };
-  }, [shownImage?.id, compareDs?.id, shownImage?.modifiedAt, compareDs?.modifiedAt]);
+  }, [shownId, compareDsId, shownModified, compareModified]);
   const collapsedForCompare = useRef(false);
-  useEffect(() => {
-    // runs when a comparison opens or closes, not when the explorer is toggled by hand
+  // runs when a comparison opens or closes, not when the explorer is toggled by hand
+  const fitExplorerToCompare = useEffectEvent(() => {
     if (!compareDs) {
       setActive("a");
       if (collapsedForCompare.current) toggle("sideOpen"); // give the explorer back when the comparison ends
@@ -295,14 +303,16 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
       collapsedForCompare.current = true; // two maps need the width
       toggle("sideOpen");
     }
-  }, [compareDs?.id]);
-  useEffect(() => {
+  });
+  useEffect(() => fitExplorerToCompare(), [compareDsId]);
+  const clearMirror = useEffectEvent(() => {
     if (!links(group, "cursor")) {
       viewerA.setMirror(null);
       viewerB.setMirror(null);
       setOutsideIn(null);
     }
-  }, [linked, group?.facets.cursor, group?.basis]);
+  });
+  useEffect(() => clearMirror(), [linked, group?.facets.cursor, group?.basis]);
   const [focusJob, setFocusJob] = useState<number | null>(null);
   const [familyPreset, setFamilyPreset] = useState<FamilyPreset | null>(null);
   const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "runs" | "run" | "rerun" | "open" | "look" | "needs" | "health" | "import" | "family">("viewer");
@@ -372,7 +382,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const narrowNow = () => typeof matchMedia === "function" && matchMedia("(width <= 800px)").matches;
   useEffect(() => {
     if (narrowNow()) set("sideOpen", false);
-  }, [mode]);
+  }, [mode, set]);
   useEffect(() => {
     if (typeof matchMedia !== "function") return;
     const q = matchMedia("(width <= 800px)");
@@ -380,7 +390,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     const onChange = () => { if (q.matches) { set("sideOpen", false); set("inspOpen", false); } };
     q.addEventListener("change", onChange);
     return () => q.removeEventListener("change", onChange);
-  }, []);
+  }, [set]);
   const openSubset = (id: number) => {
     setSubsetId(id);
     cat.select(null);

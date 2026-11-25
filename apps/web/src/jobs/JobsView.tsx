@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 import { Button, Checkbox, Pill } from "../ui";
 import { NotifyToggle } from "../notifications/NotifyToggle";
 import { jobResult } from "../api/analysis";
@@ -58,14 +58,16 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun, onOpen
   const sweep = sweeps.find((x) => x.id === selSweep) ?? null;
   const pickJob = (id: number | null) => { setSel(id); setSelSweep(null); setNewSweep(null); };
   const replaceSweep = (x: Sweep) => { setSweeps((cur) => (cur.some((y) => y.id === x.id) ? cur.map((y) => (y.id === x.id ? x : y)) : [x, ...cur])); void listJobs().then(setJobs).catch(() => undefined); };
-  const replace = (j: Job) => setJobs((cur) => (cur.some((x) => x.id === j.id) ? cur.map((x) => (x.id === j.id ? j : x)) : [j, ...cur]));
+  const replace = useCallback((j: Job) => setJobs((cur) => (cur.some((x) => x.id === j.id) ? cur.map((x) => (x.id === j.id ? j : x)) : [j, ...cur])), []);
 
   // follow an active job: ask the scheduler every 15 s while it is queued or running
+  const jobId = job?.id;
+  const jobState = job?.state;
   useEffect(() => {
-    if (!job || !ACTIVE.includes(job.state)) return;
-    const t = setInterval(() => refreshJob(job.id).then(replace).catch(() => undefined), 15000);
+    if (jobId === undefined || jobState === undefined || !ACTIVE.includes(jobState)) return;
+    const t = setInterval(() => refreshJob(jobId).then(replace).catch(() => undefined), 15000);
     return () => clearInterval(t);
-  }, [job?.id, job?.state]);
+  }, [jobId, jobState, replace]);
 
   return (
     <div className={s.root}>
@@ -115,13 +117,14 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun, onSweep }: { jo
   const [busy, setBusy] = useState(false);
   const [run, setRun] = useState<Run | null>(null);
   const [autoImport, setAutoImport] = useState(job.autoImport);
-  useEffect(() => {
+  const showJob = useEffectEvent(() => {
     setScript(job.script);
     setAutoImport(job.autoImport);
     setLog(null);
     setErr(null);
     setRun(null);
-  }, [job.id]);
+  });
+  useEffect(() => showJob(), [job.id]);
 
   async function act<T>(f: () => Promise<T>, then?: (r: T) => void) {
     setBusy(true);

@@ -133,7 +133,7 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
   const runById = useMemo(() => new Map(runs.map((r) => [r.id, r])), [runs]);
   const titles = useMemo(() => new Map(list.map((r) => [r.title.toLowerCase(), r])), [list]);
   const src: SourceBlock[] = useMemo(() => splitBlocks(view?.body ?? ""), [view?.body]);
-  const blockIds = view?.blockIds ?? [];
+  const blockIds = useMemo(() => view?.blockIds ?? [], [view?.blockIds]);
   const blocks: DocBlock[] = useMemo(
     () =>
       src.map((b, i): DocBlock => {
@@ -165,7 +165,7 @@ export function ReportsView({ onOpenRun }: { onOpenRun?: (id: number) => void })
     }),
     [runById, figByRev, titles],
   );
-  const threads = view?.comments.filter((c) => c.parentId === 0) ?? [];
+  const threads = useMemo(() => view?.comments.filter((c) => c.parentId === 0) ?? [], [view?.comments]);
   const counts = useMemo(() => {
     const m: Record<string, number> = {};
     for (const t of threads) if (!t.resolvedAt) m[t.block] = (m[t.block] ?? 0) + 1;
