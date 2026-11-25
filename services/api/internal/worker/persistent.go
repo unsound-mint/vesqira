@@ -141,11 +141,20 @@ func BaseEnv() []string {
 	return env
 }
 
+// Interpreter is name as the path it has on this process's PATH. A venv's python3 finds the venv's packages only when it is
+// started by that path; workers run with a minimal PATH, so a bare name would start the system python instead.
+func Interpreter(name string) string {
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	return name
+}
+
 func (p *Persistent) start() (*proc, error) {
 	if len(p.Command) == 0 {
 		return nil, ErrUnavailable
 	}
-	cmd := exec.Command(p.Command[0], p.Command[1:]...)
+	cmd := exec.Command(Interpreter(p.Command[0]), p.Command[1:]...)
 	cmd.Env = append(BaseEnv(), p.ExtraEnv...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stderr = StderrTail.Writer(nil) // the worker's log lines (failures, slow requests) name the API request id

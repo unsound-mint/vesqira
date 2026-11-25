@@ -308,7 +308,7 @@ func (s *Server) runAnalysisProgramCtx(ws workspace.ID, parent context.Context, 
 	}
 	ctx, cancel := context.WithTimeout(parent, s.Analysis.Timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, s.Analysis.Python, args...)
+	cmd := exec.CommandContext(ctx, worker.Interpreter(s.Analysis.Python), args...)
 	cmd.Env = worker.BaseEnv()
 	if id := RequestID(parent); id != "" { // already validated as a plain token
 		cmd.Env = append(cmd.Env, "VESQIRA_REQUEST_ID="+id)

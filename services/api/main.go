@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -108,9 +107,7 @@ func main() {
 	load := worker.NewLoad(budgets)
 	// Resolve the interpreter once, in this process's environment, so the workers (which run with a minimal PATH)
 	// use the same Python, and the same astropy, as the one the operator started the API with.
-	if p, err := exec.LookPath(*python); err == nil {
-		*python = p
-	}
+	*python = worker.Interpreter(*python)
 	host, _, err := net.SplitHostPort(*addr)
 	if !*multiUser && (err != nil || (host != "127.0.0.1" && host != "localhost" && host != "::1")) {
 		log.Fatalf("refusing to listen on %q: local mode binds to loopback only", *addr)
