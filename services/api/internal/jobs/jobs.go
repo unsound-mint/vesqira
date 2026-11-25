@@ -739,15 +739,6 @@ func (s *Store) NoteSubmitting(id int64, detail string) error {
 	return err
 }
 
-func (s *Store) SetState(id int64, state, detail string) error {
-	var fin any
-	if state == StateCompleted || state == StateFailed || state == StateCancelled {
-		fin = time.Now().Unix()
-	}
-	_, err := s.db.Exec(`UPDATE jobs SET state=?, detail=?, finished_at=COALESCE(finished_at, ?) WHERE id=?`, state, detail, fin, id)
-	return err
-}
-
 // ApplyStatus records what Slurm reported for a job that is queued or running, and only for such a job: the update is
 // guarded by the state, so a late "running" answer cannot overwrite an end state and, when two callers (the background
 // watcher, the Refresh button, the page's own timer) read the same end state, exactly one of them wins. It reports whether

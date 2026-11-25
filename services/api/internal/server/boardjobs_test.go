@@ -74,7 +74,7 @@ func TestABoardCanFollowAJobAndAReviewerSeesOnlyAPlaceholder(t *testing.T) {
 		t.Fatal(err)
 	}
 	js.MarkSubmitted(j.ID, "98765")
-	js.SetState(j.ID, jobs.StateRunning, "running")
+	js.ApplyStatus(j.ID, jobs.StateRunning, "running")
 
 	_, bout := postJSON(t, api("/api/boards"), map[string]any{"title": "Live"})
 	var b boards.Board
@@ -209,7 +209,7 @@ func TestBoardFetchNeverWaitsLongForAJobLog(t *testing.T) {
 	}
 	j, _ := js.CreateDraft(jobs.Job{HostID: 1, Name: "slow", Template: "vgt", Script: "#!/bin/sh\n"})
 	js.MarkSubmitted(j.ID, "5")
-	js.SetState(j.ID, jobs.StateRunning, "")
+	js.ApplyStatus(j.ID, jobs.StateRunning, "")
 	b, _ := bs.CreateBoard(workspace.Local, "local-owner", "B")
 	bs.AddJobItem(workspace.Local, b.ID, j.ID)
 	start := time.Now()
