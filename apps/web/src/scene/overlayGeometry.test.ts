@@ -10,9 +10,9 @@ import { figureScene, overlaysPending } from "./figureScene";
 import { geometryKey, spacingFor, toPicture } from "./geometry";
 import type { GeometryMap } from "./geometry";
 import { draftToOverlay, emptyDraft, overlayToDraft } from "./overlayForm";
-import { sceneLayers, sceneMarks } from "./overlays";
+import { FIGURE_STROKE, HALO, sceneLayers, sceneMarks } from "./overlays";
 import type { Mark } from "./overlays";
-import { OVERLAY_COLORS } from "./palette";
+import { BG, FRAME, INK, INK2, OVERLAY_COLORS } from "./palette";
 import { DEFAULT_DISPLAY, newScene, sceneReducer } from "./scene";
 import type { Scene, SceneOverlay } from "./scene";
 
@@ -201,5 +201,13 @@ describe("the overlay form", () => {
 describe("the overlay palette", () => {
   it("is the --overlay-* tokens, so the screen and a figure draw the same colours", () => {
     for (const [name, hex] of Object.entries(OVERLAY_COLORS)) expect(tokens).toContain(`--overlay-${name}:${hex};`);
+  });
+
+  it("keeps the figure inks equal to the dark theme's tokens", () => {
+    const dark = tokens.slice(0, tokens.indexOf("@media"));
+    for (const [token, hex] of Object.entries({ "--text": INK, "--text-2": INK2, "--bg-1": BG, "--line-strong": FRAME, "--canvas": HALO })) {
+      expect(dark).toContain(`${token}:${hex};`);
+    }
+    expect(FIGURE_STROKE.saved.color).toBe(INK2);
   });
 });

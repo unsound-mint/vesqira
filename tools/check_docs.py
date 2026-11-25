@@ -27,6 +27,17 @@ try:
     tracked = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
 except Exception:
     tracked = []
+# A backticked repo path in tracked Markdown must be tracked itself: private notes are kept out of git on purpose,
+# so a pointer into them is dead for everyone else.
+tracked_set = set(tracked)
+tracked_dirs = {"/".join(f.split("/")[:i]) for f in tracked for i in range(1, len(f.split("/")))}
+repo_path = re.compile(r"`((?:docs|tools|apps|services|packaging|design|e2e)/[A-Za-z0-9_./-]+)`")
+for f in tracked:
+    if not f.endswith(".md") or "/prototypes/" in f:
+        continue
+    for ref in repo_path.findall((ROOT / f).read_text(errors="ignore")):
+        if ref.rstrip("/") not in tracked_set | tracked_dirs:
+            errors.append(f"{f}: `{ref}` is not tracked in git")
 bad = re.compile(r"(\.fits(\.gz)?$|\.fit$|\.tiff?$|\.czi$|\.parquet$|(^|/)\.env($|\.)|\.pem$|\.key$)")
 for f in tracked:
     if bad.search(f) and not f.endswith(".env.example"):

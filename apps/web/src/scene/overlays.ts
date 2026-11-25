@@ -6,7 +6,7 @@ import { MARKER_STRIDE } from "../api/overlays";
 import { linePath, outline } from "../viewer/region";
 import { readyGeometry, toPicture } from "./geometry";
 import type { GeometryMap } from "./geometry";
-import { DEFAULT_WIDTH, OVERLAY_COLORS } from "./palette";
+import { DEFAULT_WIDTH, INK2, OVERLAY_COLORS } from "./palette";
 import type { OverlayColor } from "./palette";
 import type { OverlayKind, OverlayOf, Scene, SceneOverlay, SceneRegion } from "./scene";
 
@@ -296,9 +296,9 @@ export const sceneMarks = (scene: Scene, ctx: DrawContext): Mark[] => sceneLayer
 
 /** How each role looks on a figure (the viewer styles the same roles with CSS tokens in PlaneViewer.module.css). */
 export const FIGURE_STROKE: Record<Exclude<MarkRole, "orientation">, { color: string; width: number; dash: number[] }> = {
-  region: { color: "#3cc4e8", width: 2, dash: [] },
-  saved: { color: "#a7b3c1", width: 1.5, dash: [] },
-  draft: { color: "#3cc4e8", width: 1.5, dash: [4, 3] },
+  region: { color: OVERLAY_COLORS.cyan, width: 2, dash: [] },
+  saved: { color: INK2, width: 1.5, dash: [] },
+  draft: { color: OVERLAY_COLORS.cyan, width: 1.5, dash: [4, 3] },
 };
 export const HALO = "#06080c"; // --canvas: every line gets a dark halo so it reads over bright and dark pixels alike
 export const LABEL_PX = 11;

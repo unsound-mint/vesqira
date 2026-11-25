@@ -64,7 +64,7 @@ In the plot, a panel that differs from the main one **only by unit** (same state
 - Go: saved views (replace by name, case, cap, validation), the migration from schema 23, the routes against the OpenAPI document, and the 2,000-run listing.
 - End to end (`e2e/tests/zzzzzzzz-runs-table.spec.ts`): six runs written to disk and imported, the table, keyboard sort, the plot, selection, Back, a saved view across a reload, the three exports with their provenance, axe on the table and the plot.
 - Unit conversion: worker tests (`test_unit_values.py`: factors against closed forms, uncertainty scaled, K to Jy/beam, km/s to Hz, rad to a plain number, deg_C and function units refused, one refusal refuses all, malformed requests); Go (the route against the OpenAPI document, refusals as 200 with a reason, 400s, the operation is interactive); web (offers only for a same-definition panel, merge and marker, stale entry ignored, CSV columns beside the recorded ones, refusal shown, undo).
-- Not verified: a design review of the screen (`docs/design/quality-gates.md`), real VGT and ROHSA runs, behaviour with thousands of runs in a browser (the data size is measured, the rendering is not), screen-reader use of the plot beyond the table that mirrors it.
+- Not verified: a design review of the screen, real VGT and ROHSA runs, behaviour with thousands of runs in a browser (the data size is measured, the rendering is not), screen-reader use of the plot beyond the table that mirrors it.
 
 ## Rollback/Migration
 
