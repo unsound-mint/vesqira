@@ -7,10 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "gen:api": "npm --prefix ../../packages/contracts ci --silent && npm --prefix ../../packages/contracts run gen --silent",
-    "check:api": "npm --prefix ../../packages/contracts ci --silent && npm --prefix ../../packages/contracts run check --silent",
+    "gen:api": "../../tools/npm-in.sh ../../packages/contracts gen",
+    "check:api": "../../tools/npm-in.sh ../../packages/contracts check",
     "typecheck": "tsc -b",
-    "lint": "npm --prefix ../../tools/lint ci --silent && npm --prefix ../../tools/lint run lint --silent",
+    "lint": "../../tools/npm-in.sh ../../tools/lint lint",
     "lint:css": "stylelint \"src/**/*.css\"",
     "test": "vitest run"
   },

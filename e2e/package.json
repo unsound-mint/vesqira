@@ -6,7 +6,7 @@
   "scripts": {
     "test": "playwright test",
     "typecheck": "tsc --noEmit",
-    "lint": "npm --prefix ../tools/lint ci --silent && npm --prefix ../tools/lint run lint --silent"
+    "lint": "../tools/npm-in.sh ../tools/lint lint"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
