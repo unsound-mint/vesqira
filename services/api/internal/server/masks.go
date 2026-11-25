@@ -164,7 +164,7 @@ func (s *Server) makeMask(ctx context.Context, d catalog.Dataset, in maskReq, au
 	if mtype == masks.Other && cleanText(in.Meaning, 300) == "" {
 		return maskView{}, 422, "a mask of type other needs a description of what it flags"
 	}
-	isAxial := d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation"
+	isAxial := d.Interpretation.IsAxial()
 	if isAxial && (in.Method == "low_snr" || in.Method == "saturated") {
 		return maskView{}, 422, "this map is declared as an axial orientation map: its values are angles, so a signal-to-noise or saturation threshold on them means nothing"
 	}
@@ -740,6 +740,7 @@ func masksTiers(der *derived.Summary) []safeTier {
 		var rule struct {
 			Rule string `json:"rule"`
 		}
+		// an unreadable rule has no sentence to quote
 		_ = json.Unmarshal(m.Rule, &rule)
 		note := "pixels flagged " + masks.TypeLabel(m.Type) + " were " + how + " in this result"
 		if rule.Rule != "" {

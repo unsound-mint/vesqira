@@ -42,7 +42,7 @@ func spectralAsk(w http.ResponseWriter, unit, convention string, req map[string]
 }
 
 func (s *Server) notAxial(w http.ResponseWriter, d catalog.Dataset) bool {
-	if d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+	if d.Interpretation.IsAxial() {
 		fail(w, 409, axialNoAverage)
 		return false
 	}

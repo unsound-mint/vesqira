@@ -797,7 +797,7 @@ func (s *Server) declareByRule(ctx context.Context, p projects.Project, res *app
 		case d.Interpretation != nil && d.Interpretation.DeclaredBy == "user":
 			notes = append(notes, "kept your own orientation declaration")
 		default:
-			in := catalog.Interpretation{Kind: "axial_orientation", Unit: rule.AngleUnit, DeclaredBy: by}
+			in := catalog.Interpretation{Kind: catalog.AxialOrientation, Unit: rule.AngleUnit, DeclaredBy: by}
 			if rule.AngleFrame != "" {
 				f := rule.AngleFrame
 				in.Frame = &f

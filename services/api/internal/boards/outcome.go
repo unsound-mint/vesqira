@@ -111,8 +111,12 @@ func (s *Store) Preflight(ws workspace.ID, boardID int64, question string, jobs 
 				DeclaredBy string `json:"declaredBy"`
 			} `json:"interpretation"`
 		}
-		_ = json.Unmarshal(it.Figure.Provenance, &p)
 		name := it.Figure.Title
+		if len(it.Figure.Provenance) > 0 {
+			if err := json.Unmarshal(it.Figure.Provenance, &p); err != nil {
+				warns = append(warns, fmt.Sprintf("The provenance of %q cannot be read, so its code state and QC review could not be checked.", name))
+			}
+		}
 		if it.Figure.Caption == "" {
 			warns = append(warns, fmt.Sprintf("%q has no caption.", name))
 		}

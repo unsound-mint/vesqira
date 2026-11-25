@@ -158,6 +158,7 @@ func (s *Server) recordedCarry(nd catalog.Dataset) map[string]any {
 	var pm struct {
 		MaskCarry map[string]any `json:"maskCarry"`
 	}
+	// an unreadable record carries no masks
 	_ = json.Unmarshal(rec.Params, &pm)
 	return pm.MaskCarry
 }

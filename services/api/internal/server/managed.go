@@ -50,6 +50,7 @@ func (s *Server) previewFile(w http.ResponseWriter, r *http.Request) {
 			CDelt  *float64 `json:"cdelt"`
 		} `json:"axes"`
 	}
+	// an unreadable header declares no axes, which the checks below treat as undeclared
 	_ = json.Unmarshal(hdr, &h)
 	declared := func(i int) bool {
 		return i < len(h.Axes) && h.Axes[i].CType != nil && h.Axes[i].CRVal != nil && h.Axes[i].CRPix != nil && h.Axes[i].CDelt != nil

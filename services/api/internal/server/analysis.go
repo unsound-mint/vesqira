@@ -162,7 +162,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		if in.Op == "axial_diff" {
 			// both maps must be declared axial (unit known) and share the grid: a difference is only meaningful then
 			ia, ib := d.Interpretation, ref.Interpretation
-			if ia == nil || ib == nil || ia.Kind != "axial_orientation" || ib.Kind != "axial_orientation" {
+			if !ia.IsAxial() || !ib.IsAxial() {
 				fail(w, 422, "both maps must be declared as axial orientation maps (with a unit) before they can be differenced")
 				return
 			}
@@ -178,7 +178,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.Op == "scalar_diff" {
 			// angles are periodic: a map declared axial has its own difference, and a plain subtraction would be wrong for it
-			if (d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation") || (ref.Interpretation != nil && ref.Interpretation.Kind == "axial_orientation") {
+			if (d.Interpretation.IsAxial()) || (ref.Interpretation.IsAxial()) {
 				fail(w, 422, "a map declared as an axial orientation map needs the axial difference, which is taken modulo 180 degrees")
 				return
 			}
@@ -414,6 +414,7 @@ func (s *Server) analysisJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var full []map[string]any
+		// specs was just marshalled by maskSpecs
 		_ = json.Unmarshal([]byte(specs), &full)
 		strict := make([]map[string]any, 0, len(full))
 		for _, sp := range full {
@@ -540,8 +541,10 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 	if json.Unmarshal([]byte(text), &res) != nil || !res.OK {
 		return catalog.Dataset{}, "", 422, "the analysis did not finish successfully on the host"
 	}
-	var p analysisJobParams
-	_ = json.Unmarshal([]byte(j.Params), &p)
+	p, err := analysisParamsOf(j)
+	if err != nil {
+		return catalog.Dataset{}, "", 500, "the job's record cannot be read"
+	}
 	if !p.applied(res.Applied) {
 		return catalog.Dataset{}, "", 502, jobIgnoredCorrections
 	}
@@ -575,7 +578,7 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 		log.Printf("derived: %v", err)
 	}
 	if p.Axial != nil {
-		in := catalog.Interpretation{Kind: "axial_orientation", Unit: p.Axial.Unit, Frame: p.Axial.Frame, Quantity: p.Axial.Quantity}
+		in := catalog.Interpretation{Kind: catalog.AxialOrientation, Unit: p.Axial.Unit, Frame: p.Axial.Frame, Quantity: p.Axial.Quantity}
 		reg := func(fp string) (catalog.Dataset, int, string) { return s.registerRemoteFile(ctx, h.Host, fp) }
 		d = s.finishAxialResult(wsCtx(ctx), analysisOutcome{Summary: res.Summary, Software: res.Software}, d, &axialRun{interp: in}, remoteRelPath(j.OutputDir), reg, p.Op, p.Sources, params)
 	}
@@ -594,6 +597,7 @@ func (s *Server) derivedSummary(ws workspace.ID, datasetID int64) *derived.Summa
 	var sum struct {
 		Policy string `json:"policy"`
 	}
+	// an unreadable summary names no policy
 	_ = json.Unmarshal(rec.Summary, &sum)
 	names := []string{}
 	for _, id := range rec.Sources {
@@ -635,12 +639,18 @@ func (s *Server) jobResult(w http.ResponseWriter, r *http.Request) {
 		fail(w, code, msg)
 		return
 	}
-	var p analysisJobParams
-	_ = json.Unmarshal([]byte(j.Params), &p)
+	p, err := analysisParamsOf(j)
+	if err != nil {
+		fail(w, 500, "the job's record cannot be read")
+		return
+	}
 	var res struct {
 		Applied []string `json:"corrections_applied"`
 	}
-	_ = json.Unmarshal([]byte(text), &res)
+	if json.Unmarshal([]byte(text), &res) != nil {
+		fail(w, 502, "the host's result cannot be read")
+		return
+	}
 	if !p.applied(res.Applied) {
 		fail(w, 502, jobIgnoredCorrections)
 		return
@@ -659,6 +669,15 @@ type analysisJobParams struct {
 	Corrections      []map[string]any  `json:"corrections"`
 	CorrectionHashes []string          `json:"correctionHashes"`
 	CarryPlan        *jobCarryPlan     `json:"carryPlan"`
+}
+
+// analysisParamsOf reads what the job was drafted with. A record that cannot be read is an error and not an empty value: an empty
+// one would say no corrections were asked for, and the result would pass the check in applied.
+func analysisParamsOf(j jobs.Job) (p analysisJobParams, err error) {
+	if j.Params != "" {
+		err = json.Unmarshal([]byte(j.Params), &p)
+	}
+	return p, err
 }
 
 // applied reports whether a job's result echoes every correction state the job was drafted with (ADR 0064).

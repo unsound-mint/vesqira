@@ -279,6 +279,7 @@ func (s *Server) updateSummary(ws workspace.ID, id int64, f func(*storedSummary)
 		return
 	}
 	var sum storedSummary
+	// a project not yet scanned has an empty summary and starts from zero
 	_ = json.Unmarshal(p.Summary, &sum)
 	f(&sum)
 	b, _ := json.Marshal(sum)

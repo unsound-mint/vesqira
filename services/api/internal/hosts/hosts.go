@@ -134,6 +134,7 @@ func scan(row interface{ Scan(...any) error }) (Host, error) {
 	if err := row.Scan(&h.ID, &h.Name, &h.Dest, &h.Python, &rj, &at, &vc, &vd); err != nil {
 		return Host{}, err
 	}
+	// Roots is written with json.Marshal; an unreadable column reads as no roots
 	_ = json.Unmarshal([]byte(rj), &h.Roots)
 	h.VPNCommand, h.VPNDisconnectCommand = decodeArgv(vc), decodeArgv(vd)
 	h.CreatedAt = time.Unix(at, 0).UTC()

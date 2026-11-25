@@ -44,6 +44,7 @@ func shownMasksTiers(shown []masks.Mask) []safeTier {
 		var rule struct {
 			Rule string `json:"rule"`
 		}
+		// an unreadable rule has no sentence to quote
 		_ = json.Unmarshal(m.Rule, &rule)
 		note := "hatched over the plane of this figure: it flags " + strconv.FormatInt(m.Flagged, 10) + " of " + strconv.FormatInt(m.Total, 10) + " pixels as " + masks.TypeLabel(m.Type) +
 			"; fingerprint sha256:" + m.SHA256

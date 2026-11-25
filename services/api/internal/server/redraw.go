@@ -305,6 +305,7 @@ func (s *Server) checkRedraw(ctx context.Context, f boards.Figure) redrawResult 
 	}
 	var doc figureIdentity
 	if len(f.Identity) > 0 {
+		// an unreadable identity reads like a figure saved before identities: no recorded datasets
 		_ = json.Unmarshal(f.Identity, &doc)
 	}
 	recorded := func(id int64) *figureDatasetIdentity {

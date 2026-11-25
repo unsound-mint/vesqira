@@ -431,10 +431,12 @@ func (s *Server) projectTree(w http.ResponseWriter, r *http.Request) {
 			var d struct {
 				Count int `json:"count"`
 			}
+			// an unreadable row shows an empty directory
 			_ = json.Unmarshal(row.Data, &d)
 			e.Count = &d.Count
 		case "run":
 			var run discover.Run
+			// an unreadable row shows a run with no fields
 			_ = json.Unmarshal(row.Data, &run)
 			tr := &treeRun{Record: run.Record, RecordKind: run.RecordKind, Fields: run.Fields, Settings: run.Settings, Differs: run.Differs, Notes: run.Notes, OutputCount: run.OutputCount, OutputBytes: run.OutputBytes}
 			reg := s.profilesAt(wsOf(r), absFor(p, ""))
@@ -457,6 +459,7 @@ func (s *Server) projectTree(w http.ResponseWriter, r *http.Request) {
 			e.Run = tr
 		default:
 			var f discover.File
+			// an unreadable row shows a file with no facts
 			_ = json.Unmarshal(row.Data, &f)
 			tf := &treeFile{Size: f.Size, MtimeNS: f.MtimeNS, Format: f.Format, Viewer: f.Viewer, Role: f.Role, ReadOnly: f.ReadOnly}
 			if f.Format == "FITS" || f.Format == "Catalog" {

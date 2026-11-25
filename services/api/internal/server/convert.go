@@ -78,7 +78,7 @@ func (s *Server) convert(w http.ResponseWriter, r *http.Request) {
 		}
 		req["value"], key = f, key+"value="+strconv.FormatFloat(f, 'g', -1, 64)+";"
 	}
-	if req["to"] != nil && d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+	if req["to"] != nil && d.Interpretation.IsAxial() {
 		fail(w, 409, "this dataset is declared as an axial orientation map: its values are angles, not a brightness, so no brightness unit conversion applies")
 		return
 	}

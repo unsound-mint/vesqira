@@ -157,7 +157,7 @@ func TestResponsesMatchTheSpecForCapabilitiesFiguresAndBoards(t *testing.T) {
 		t.Fatal(err)
 	}
 	js.MarkSubmitted(j.ID, "1")
-	js.SetState(j.ID, jobs.StateRunning, "running")
+	js.ApplyStatus(j.ID, jobs.StateRunning, "running")
 	call("POST", "/api/boards/{id}/items", items, map[string]any{"jobId": j.ID}, 200)
 	live := call("GET", "/api/boards/{id}", api+"/api/boards/"+bid, nil, 200) // reads the job log, so the panel carries progress
 	if !strings.Contains(string(live), `"progress"`) {

@@ -349,7 +349,7 @@ func (s *Server) plane(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, "step must be an integer from 1 to 64")
 			return
 		}
-		if step > 1 && d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+		if step > 1 && d.Interpretation.IsAxial() {
 			// block means of angles are wrong (1 and 179 degrees would average to 90); an orientation map is always sent whole
 			fail(w, 400, "a reduced preview is not available for an orientation map")
 			return
@@ -381,7 +381,7 @@ func (s *Server) spectrum(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+	if d.Interpretation.IsAxial() {
 		// Enforced here, not only in the interface: the arithmetic mean of axial angles is not a valid statistic.
 		fail(w, 409, "this dataset is declared as an axial orientation map; averaging its angles arithmetically is not valid. Use the orientation statistics")
 		return
@@ -434,7 +434,7 @@ func (s *Server) regionHistogram(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+	if d.Interpretation.IsAxial() {
 		fail(w, 409, "this dataset is declared as an axial orientation map; a histogram of its angles over a region is not offered here. Use the orientation statistics")
 		return
 	}

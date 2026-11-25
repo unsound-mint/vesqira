@@ -83,6 +83,7 @@ func refuse(format string, a ...any) *apiErr { return &apiErr{422, fmt.Sprintf(f
 // unitOf is the data unit a dataset's catalogued header states, or the researcher's declaration when it states none.
 func unitOf(d catalog.Dataset) (string, bool) {
 	var h fileUnit
+	// the header is the worker's report as stored; an unreadable one states no unit, and the declaration below is used
 	_ = json.Unmarshal(effectiveHeader(d), &h)
 	if h.Bunit != nil && strings.TrimSpace(*h.Bunit) != "" {
 		return strings.TrimSpace(*h.Bunit), true

@@ -1027,6 +1027,7 @@ func (s *Store) snapshotList(ws workspace.ID, boardID int64) ([]Snapshot, error)
 			return nil, err
 		}
 		var fr Frozen
+		// a damaged snapshot row lists as empty instead of failing the whole list
 		_ = json.Unmarshal([]byte(frozen), &fr)
 		sn.CreatedAt, sn.ExpiresAt, sn.Revoked, sn.Items, sn.Question, sn.Access = time.Unix(c, 0).UTC(), time.Unix(e, 0).UTC(), rv != 0, len(fr.Items), fr.Question, fr.Access
 		if boardID == FigureShareBoard && len(fr.Items) == 1 {
