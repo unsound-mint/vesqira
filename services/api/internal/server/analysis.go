@@ -162,7 +162,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		if in.Op == "axial_diff" {
 			// both maps must be declared axial (unit known) and share the grid: a difference is only meaningful then
 			ia, ib := d.Interpretation, ref.Interpretation
-			if ia == nil || ib == nil || ia.Kind != "axial_orientation" || ib.Kind != "axial_orientation" {
+			if !ia.IsAxial() || !ib.IsAxial() {
 				fail(w, 422, "both maps must be declared as axial orientation maps (with a unit) before they can be differenced")
 				return
 			}
@@ -178,7 +178,7 @@ func (s *Server) analyze(w http.ResponseWriter, r *http.Request) {
 		}
 		if in.Op == "scalar_diff" {
 			// angles are periodic: a map declared axial has its own difference, and a plain subtraction would be wrong for it
-			if (d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation") || (ref.Interpretation != nil && ref.Interpretation.Kind == "axial_orientation") {
+			if (d.Interpretation.IsAxial()) || (ref.Interpretation.IsAxial()) {
 				fail(w, 422, "a map declared as an axial orientation map needs the axial difference, which is taken modulo 180 degrees")
 				return
 			}
@@ -575,7 +575,7 @@ func (s *Server) registerAnalysisJob(ctx context.Context, j jobs.Job, h hostRef)
 		log.Printf("derived: %v", err)
 	}
 	if p.Axial != nil {
-		in := catalog.Interpretation{Kind: "axial_orientation", Unit: p.Axial.Unit, Frame: p.Axial.Frame, Quantity: p.Axial.Quantity}
+		in := catalog.Interpretation{Kind: catalog.AxialOrientation, Unit: p.Axial.Unit, Frame: p.Axial.Frame, Quantity: p.Axial.Quantity}
 		reg := func(fp string) (catalog.Dataset, int, string) { return s.registerRemoteFile(ctx, h.Host, fp) }
 		d = s.finishAxialResult(wsCtx(ctx), analysisOutcome{Summary: res.Summary, Software: res.Software}, d, &axialRun{interp: in}, remoteRelPath(j.OutputDir), reg, p.Op, p.Sources, params)
 	}

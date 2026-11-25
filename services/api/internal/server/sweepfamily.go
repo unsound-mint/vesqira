@@ -203,7 +203,7 @@ func (s *Server) sweepFamily(w http.ResponseWriter, r *http.Request) {
 // only has to be usable itself): a mix of orientation and scalar maps, orientations stated differently or not declared, another grid, another brightness unit
 // or another place. It is the same checks familyAgreement makes, as sentences for one job each.
 func sweepFamilyFits(role string, ref *catalog.Dataset, d catalog.Dataset) string {
-	axial := d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation"
+	axial := d.Interpretation.IsAxial()
 	if axial && d.Interpretation.Stale {
 		return d.Name + " changed since it was declared as an orientation map; declare it again"
 	}
@@ -221,7 +221,7 @@ func sweepFamilyFits(role string, ref *catalog.Dataset, d catalog.Dataset) strin
 	if where := familyPlaces([]catalog.Dataset{*ref, d}); where != "" {
 		return where
 	}
-	refAxial := ref.Interpretation != nil && ref.Interpretation.Kind == "axial_orientation"
+	refAxial := ref.Interpretation.IsAxial()
 	if axial != refAxial {
 		return d.Name + " and " + ref.Name + " are not the same kind of map (orientation and scalar): a difference of those is not meaningful"
 	}

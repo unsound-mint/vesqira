@@ -246,7 +246,7 @@ func (o FileOrientation) Text() string {
 // attachVGT fills d.OrientationHeader from the stored header and, when a declaration other than the file's is in force, lists where they differ.
 func (d *Dataset) attachVGT() {
 	d.OrientationHeader = VGTOf(d.Header)
-	if d.OrientationHeader == nil || d.OrientationHeader.Orientation == nil || d.Interpretation == nil || d.Interpretation.Kind != "axial_orientation" || IsFileHeaderAuthor(d.Interpretation.DeclaredBy) {
+	if d.OrientationHeader == nil || d.OrientationHeader.Orientation == nil || !d.Interpretation.IsAxial() || IsFileHeaderAuthor(d.Interpretation.DeclaredBy) {
 		return
 	}
 	d.OrientationHeader.Conflicts = orientationConflicts(*d.OrientationHeader.Orientation, *d.Interpretation, gridFrame(d.Header))

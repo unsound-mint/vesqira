@@ -172,7 +172,7 @@ func (p relOrientParams) worker(catalogMode, stratified bool) (map[string]any, s
 // it (prefix "" or "ref-"). Every missing declaration is named; nothing is assumed.
 func (s *Server) orientationSide(r *http.Request, d catalog.Dataset, prefix, which string) ([]string, int, string) {
 	in := d.Interpretation
-	if in == nil || in.Kind != "axial_orientation" {
+	if !in.IsAxial() {
 		return nil, 422, which + " is not declared as an axial orientation map: declare its unit, frame and what the angle is first"
 	}
 	if in.Stale {
@@ -232,7 +232,7 @@ func (s *Server) stratifyThird(w http.ResponseWriter, r *http.Request, d, other 
 		fail(w, 422, "the third map must be another dataset than the two being compared")
 		return nil, third, false
 	}
-	if in := third.Interpretation; in != nil && in.Kind == "axial_orientation" {
+	if in := third.Interpretation; in.IsAxial() {
 		fail(w, 422, "the third map is declared as an axial orientation map; bins need a scalar map such as a column density or a signal-to-noise map")
 		return nil, third, false
 	}

@@ -83,7 +83,7 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 			fail(w, 500, "internal error")
 			return
 		}
-	case "axial_orientation":
+	case catalog.AxialOrientation:
 		if n := nonDegenerateAxes(d.Header); n != 2 {
 			fail(w, 422, "an orientation map must be a single plane (two axes longer than 1)")
 			return
@@ -142,7 +142,7 @@ func (s *Server) interpret(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	default:
-		fail(w, 400, "kind must be axial_orientation or none")
+		fail(w, 400, "kind must be "+catalog.AxialOrientation+" or none")
 		return
 	}
 	d, code, msg = s.dataset(wsOf(r), id)
@@ -161,7 +161,7 @@ func (s *Server) axial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	in := d.Interpretation
-	if in == nil || in.Kind != "axial_orientation" {
+	if !in.IsAxial() {
 		fail(w, 409, "this dataset is not declared as an axial orientation map")
 		return
 	}
@@ -181,7 +181,7 @@ func (s *Server) axial(w http.ResponseWriter, r *http.Request) {
 			fail(w, 409, "the reliability map is on another host: both maps must be on the same machine to be used together")
 			return
 		}
-		if rel.Interpretation != nil && rel.Interpretation.Kind == "axial_orientation" {
+		if rel.Interpretation.IsAxial() {
 			fail(w, 409, "the declared reliability dataset is itself declared as angles")
 			return
 		}

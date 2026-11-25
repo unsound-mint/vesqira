@@ -57,9 +57,13 @@ type Dataset struct {
 	OrientationHeader *VGTHeader `json:"orientationHeader"`
 }
 
+// AxialOrientation is the Interpretation kind that marks a map of axial angles (AGENTS.md invariant 4): 0 and 180 degrees are the
+// same orientation, so these maps take axial statistics only. It is the value the API contract and the stored column carry.
+const AxialOrientation = "axial_orientation"
+
 // Interpretation is a user-declared overlay on a dataset (never inferred from values, never written to the file).
 type Interpretation struct {
-	Kind          string `json:"kind"` // "axial_orientation"
+	Kind          string `json:"kind"` // AxialOrientation, the only kind today
 	Unit          string `json:"unit"` // "deg" or "rad", required
 	ReliabilityID *int64 `json:"reliabilityId"`
 	// Frame is what the angle is measured against: "pixel" (counter-clockwise from +axis 1 towards +axis 2 as stored) or
@@ -82,6 +86,9 @@ type Interpretation struct {
 	// made the declaration: the declaration may no longer describe these bytes.
 	Stale bool `json:"stale"`
 }
+
+// IsAxial reports whether this is a declaration of axial orientation. A nil interpretation (nothing declared) is not.
+func (i *Interpretation) IsAxial() bool { return i != nil && i.Kind == AxialOrientation }
 
 type Store struct{ db *sql.DB }
 

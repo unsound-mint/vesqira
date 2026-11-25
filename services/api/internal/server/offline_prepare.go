@@ -320,7 +320,7 @@ func (s *Server) planDataset(ctx context.Context, h http.Handler, d catalog.Data
 		return nil, item
 	}
 	dp := &dsPlan{d: d, host: k.host, size: k.size, mtime: k.mtime, width: v.Width, height: v.Height, nchan: v.Channels,
-		axial: d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation"}
+		axial: d.Interpretation.IsAxial()}
 	dp.step = previewStepFor(v.Width, v.Height)
 	notes := ""
 	if dp.axial {
