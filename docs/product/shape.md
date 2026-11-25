@@ -1,6 +1,6 @@
 # The shape of Vesqira
 
-One compact reference for what the product is meant to be, distilled from the 226-question requirements interview (`docs/design-history/vesqira-chatgpt-transcript.txt`) and the owner's later direction. It replaces re-reading the transcript. `Q<n>` points to the interview question; "owner:" marks his own words or later direction; "(deferred)" means decided but not for the first releases. Status of what is built lives in `docs/roadmap.md`, not here.
+One compact reference for what the product is meant to be, distilled from the 226-question requirements interview and the owner's later direction. It replaces re-reading the transcript. `Q<n>` points to the interview question; "owner:" marks his own words or later direction; "(deferred)" means decided but not for the first releases. Status of what is built lives in `docs/roadmap.md`, not here.
 
 Every decision below was chosen by the owner; for most he picked option D of the interview together with the expanded shape the interviewer wrote for it, not the bare option text. Read an entry as "D plus its shape".
 

@@ -10,7 +10,7 @@
 #   vesqira mcp             MCP server on stdio for an agent (drafts reports; cannot publish), talks to the running app
 #   vesqira report ...      read and write report drafts from scripts (vesqira report for usage)
 #   vesqira import notion [--dry-run] EXPORT.zip|FOLDER   Notion pages become draft reports
-#   vesqira publish-server ...   the always-on publish server (run on your server, see docs/setup/publish-server.md)
+#   vesqira publish-server ...   the always-on publish server (run on your server; the add-publisher form prints the key the app asks for)
 # The server listens on 127.0.0.1 only and reads files only under the folders listed in
 # ${XDG_CONFIG_HOME:-~/.config}/vesqira/roots (one path per line). The first run creates ~/Vesqira.
 set -euo pipefail
