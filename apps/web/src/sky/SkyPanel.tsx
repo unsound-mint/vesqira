@@ -79,7 +79,7 @@ export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
   const aladinFit = { view: fitFor(aladinItems), key: `${viewKey}|${aladinItems.find((i) => i.id === datasetId)?.state ?? ""}` };
 
   const scene = useMemo(
-    () => (view ? buildScene(items, view, frame, datasetId, cursor.state === "ready" ? { lon: cursor.lon!, lat: cursor.lat! } : null) : null),
+    () => (view ? buildScene(items, view, frame, datasetId, cursor.state === "ready" ? cursor : null) : null),
     [items, view, frame, datasetId, cursor],
   );
   const shown = bg && status.state === "ready";
@@ -156,7 +156,7 @@ export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
     }
   }
 
-  const where = cursor.state === "ready" ? positionText(frame, cursor.lon!, cursor.lat!) : null;
+  const where = cursor.state === "ready" ? positionText(frame, cursor.lon, cursor.lat) : null;
   return (
     <div className={s.wrap} data-testid="sky-panel">
       <p className={s.lede}>Where your datasets lie on the sky, from each dataset&apos;s celestial WCS. Context only: no measurement uses it.</p>
@@ -203,7 +203,7 @@ export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
           {bg ? (
             <Suspense fallback={null}>
               <div className={shown ? s.bgOn : s.bgOff}>
-                <AladinView survey={survey} frame={frame} fit={aladinFit} items={aladinItems} selectedId={datasetId} cursor={frame === "icrs" ? (cursor.state === "ready" ? { lon: cursor.lon!, lat: cursor.lat! } : null) : (cursorIcrs.state === "ready" ? { lon: cursorIcrs.lon!, lat: cursorIcrs.lat! } : null)} onPick={onOpen} onStatus={setStatus} onApi={setApi} />
+                <AladinView survey={survey} frame={frame} fit={aladinFit} items={aladinItems} selectedId={datasetId} cursor={frame === "icrs" ? (cursor.state === "ready" ? cursor : null) : (cursorIcrs.state === "ready" ? cursorIcrs : null)} onPick={onOpen} onStatus={setStatus} onApi={setApi} />
               </div>
             </Suspense>
           ) : null}

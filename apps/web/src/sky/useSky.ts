@@ -127,8 +127,8 @@ export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true, s
 
 const NO_SUBSETS: SubsetView[] = [];
 
-export type Cursor = { state: "off" | "loading" | "ready" | "none"; lon: number | null; lat: number | null; reason: string | null };
-const OFF: Cursor = { state: "off", lon: null, lat: null, reason: null };
+export type Cursor = { state: "off" | "loading" } | { state: "ready"; lon: number; lat: number } | { state: "none"; reason: string };
+const OFF: Cursor = { state: "off" };
 
 /**
  * The viewer's cursor pixel as a world position in the panel's frame, asked of the worker (the pixel is the viewer's; the position is
@@ -142,9 +142,9 @@ export function useSkyCursor(datasetId: number | null, probe: { x: number; y: nu
     const ac = new AbortController();
     const t = setTimeout(() => {
       getSkyPoint(datasetId, frame, probe.x, probe.y, ac.signal).then(
-        (r) => setCur({ key, c: r.position ? { state: "ready", lon: r.position.lon, lat: r.position.lat, reason: null } : { state: "none", lon: null, lat: null, reason: r.reason ?? "no position" } }),
+        (r) => setCur({ key, c: r.position ? { state: "ready", lon: r.position.lon, lat: r.position.lat } : { state: "none", reason: r.reason ?? "no position" } }),
         (e: unknown) => {
-          if (!ac.signal.aborted) setCur({ key, c: { state: "none", lon: null, lat: null, reason: e instanceof ApiError ? e.message : "could not be read" } });
+          if (!ac.signal.aborted) setCur({ key, c: { state: "none", reason: e instanceof ApiError ? e.message : "could not be read" } });
         },
       );
     }, 60);
@@ -154,5 +154,5 @@ export function useSkyCursor(datasetId: number | null, probe: { x: number; y: nu
     };
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- `key` names every input
   if (!key) return OFF;
-  return cur.key === key ? cur.c : { state: "loading", lon: null, lat: null, reason: null };
+  return cur.key === key ? cur.c : { state: "loading" };
 }

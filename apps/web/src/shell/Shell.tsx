@@ -53,9 +53,9 @@ import { editorEnabled } from "../api/editor";
 import { terminalEnabled } from "../api/terminal";
 import { getCompat, isCatalog, isImage } from "../api/catalog";
 import { HealpixSampleDone, HealpixSamplePanel } from "../catalog/HealpixSample";
-import type { Compat, ImageDataset } from "../api/catalog";
+import type { ImageDataset } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
-import { CompareBar, linkState } from "../viewer/CompareBar";
+import { CompareBar, compatOf, linkState } from "../viewer/CompareBar";
 import { getRendererNote, subscribeRendererNote } from "../viewer/glRenderer";
 import { CompareInspector } from "../viewer/CompareInspector";
 import { EM } from "../catalog/format";
@@ -79,11 +79,11 @@ import { useUndoKeys } from "../undo/keys";
 import type { Scene } from "../scene/scene";
 import type { Pixel } from "../viewer/useViewer";
 import { limits } from "../viewer/render";
-import { channelTarget, defaultPrefs, linkGroup, linkPills, links, mapPixel, sceneLink } from "../scene/link";
+import { channelTarget, defaultPrefs, linkGroup, linkMap, linkPills, links, mapPixel, sceneLink } from "../scene/link";
 import type { LinkPrefs, PaneId } from "../scene/link";
 import { useChannelLink, useSkyLink } from "../viewer/useLinkTransform";
 import { useLinkFollow } from "../viewer/useLinkFollow";
-import type { LinkControls } from "../viewer/CompareBar";
+import type { CompatState, LinkControls } from "../viewer/CompareBar";
 import { Button, IconButton, Pill, ResizeHandle, Section, getHostOffer, subscribeHostOffer } from "../ui";
 import { ErrorReferenceHost } from "./ErrorReferenceHost";
 import { LIMITS, useLayout } from "./useLayout";
@@ -145,9 +145,8 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const viewerB = useViewer(compareDs);
   const [active, setActive] = useState<"a" | "b">("a");
   const [stage, setStage] = useState<"map" | "grid">("map"); // the map pane(s), or a grid of channel maps of the open dataset
-  const [compat, setCompat] = useState<Compat | null>(null);
-  const [compatErr, setCompatErr] = useState<string | null>(null);
-  const [compatLoading, setCompatLoading] = useState(false);
+  const [compatState, setCompatState] = useState<CompatState>({ status: "idle" });
+  const compat = compatOf(compatState);
   const [shared, setShared] = useState(false);
   const [sharedLimits, setSharedLimits] = useState<[number, number] | null>(null);
   const useB = active === "b" && compareDs !== null;
@@ -156,7 +155,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const other = useB ? viewerA : viewerB;
   // The two panes are one link group (ADR 0042, section 4): on the same grid on their own, on different grids once the person
   // links them by WCS, and only while both are in it. Who has left, the name and the facets belong to this pair of datasets.
-  const sameGrid = compareDs !== null && linkState(compat, compatLoading).linked;
+  const sameGrid = compareDs !== null && linkState(compatState).linked;
   const pairKey = `${shownImage?.id ?? ""}:${compareDs?.id ?? ""}`;
   const [prefsFor, setPrefsFor] = useState<{ key: string; p: LinkPrefs }>(() => ({ key: pairKey, p: defaultPrefs() }));
   const linkPrefs = prefsFor.key === pairKey ? prefsFor.p : defaultPrefs();
@@ -196,7 +195,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
       setOutsideIn(null);
       return;
     }
-    const m = mapPixel((from === "a" ? skyAB : skyBA).map, p);
+    const m = mapPixel(linkMap(from === "a" ? skyAB : skyBA), p);
     dest.setMirror(m.kind === "inside" ? m.at : null);
     setOutsideIn(m.kind === "outside" ? to : null);
   }
@@ -205,8 +204,9 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const activeChannels = useB ? chBA : chAB;
   const lead: PaneId = useB ? "b" : "a";
   const channelLine = (() => {
-    if (!byWcs || !group.facets.channel || !activeChannels.map) return null;
-    const t = channelTarget(activeChannels.map, viewer.channel);
+    const channelMap = linkMap(activeChannels);
+    if (!byWcs || !group.facets.channel || !channelMap) return null;
+    const t = channelTarget(channelMap, viewer.channel);
     const here = viewer.scene?.base.spectral;
     if (!t || !here) return null;
     const there = lead === "a" ? "B" : "A";
@@ -222,7 +222,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     const name = (useB ? shownImage : compareDs)?.name ?? "";
     if (group.basis === "same-grid") return { name, v: other };
     if (!group.facets.cursor) return null;
-    const m = viewer.probe ? mapPixel(activeSky.map, viewer.probe) : null;
+    const m = viewer.probe ? mapPixel(linkMap(activeSky), viewer.probe) : null;
     return { name, v: other, at: m === null || m.kind === "stale" ? ("pending" as const) : m.kind === "inside" ? m.at : ("outside" as const) };
   })();
 
@@ -271,15 +271,15 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
 
   // Is the other map known to share this one's grid? Only then are cursor and channel linked.
   useEffect(() => {
-    setCompat(null);
-    setCompatErr(null);
-    if (!shownImage || !compareDs) return;
+    if (!shownImage || !compareDs) {
+      setCompatState({ status: "idle" });
+      return;
+    }
     let live = true;
-    setCompatLoading(true);
+    setCompatState({ status: "loading" });
     getCompat(shownImage.id, compareDs.id)
-      .then((c) => live && setCompat(c))
-      .catch((e: unknown) => live && setCompatErr(e instanceof Error ? e.message : "Could not compare the grids."))
-      .finally(() => live && setCompatLoading(false));
+      .then((c) => live && setCompatState({ status: "ready", compat: c }))
+      .catch((e: unknown) => live && setCompatState({ status: "error", message: e instanceof Error ? e.message : "Could not compare the grids." }));
     return () => {
       live = false;
     };
@@ -540,7 +540,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
             ) : (
           <div className={s.compare}>
             <div className={s.undoRow}><UndoBar surface="map" undoName={viewer.undoName} redoName={viewer.redoName} onUndo={viewer.undo} onRedo={viewer.redo} /></div>
-            {virtualDs ? null : <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={shownImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} link={linkControls} />}
+            {virtualDs ? null : <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={shownImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} state={compatState} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} link={linkControls} />}
             <div className={compareDs ? s.panes2 : s.panes1}>
               <section className={s.pane} aria-label={`Map: ${shownImage.name}`}>
                 {compareDs ? <PaneHeader name={shownImage.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} note={outsideIn === "a" ? OUTSIDE_NOTE : null} /> : null}
