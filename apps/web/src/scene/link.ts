@@ -189,8 +189,13 @@ export function followWcs(
 // ---- what the link pill says ----
 
 export type Pill = { text: string; tone: "ok" | "warn" | "neutral" };
-export type SkyState = { status: "idle" | "loading" | "ready" | "refused"; refused: string | null; map: SkyMap | null };
-export type ChannelState = { status: "idle" | "loading" | "ready" | "refused"; refused: string | null; map: ChannelMap | null };
+/** What the worker said about linking one direction: nothing asked yet, asked, answered with a map, or refused with its reason. */
+export type LinkState<M> = { status: "idle" | "loading" } | { status: "ready"; map: M } | { status: "refused"; refused: string };
+export type SkyState = LinkState<SkyMap>;
+export type ChannelState = LinkState<ChannelMap>;
+
+/** The map of a state that has one, else null. */
+export const linkMap = <M>(s: LinkState<M>): M | null => (s.status === "ready" ? s.map : null);
 
 const px = (v: number) => (v < 0.005 ? "< 0.01" : v.toFixed(2));
 const joined = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
@@ -213,7 +218,7 @@ export function linkPills(g: LinkGroup, sky: SkyState, channel: ChannelState): P
   const out: Pill[] = [];
   if (g.facets.cursor || g.facets.view) {
     if (sky.status === "refused") out.push({ text: `${g.facets.cursor ? "Cursor" : "View"} link refused: ${sky.refused}`, tone: "warn" });
-    else if (sky.status !== "ready" || !sky.map) out.push({ text: "Linked by WCS: computing the transform…", tone: "neutral" });
+    else if (sky.status !== "ready") out.push({ text: "Linked by WCS: computing the transform…", tone: "neutral" });
     else {
       const f = sky.map.frames;
       const frames = f.sameFrame ? `frame ${f.from}` : `frames ${f.from}↔${f.to}`;

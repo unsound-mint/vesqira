@@ -1,35 +1,35 @@
 import { useEffect, useMemo, useState } from "react";
 import { ApiError } from "../api/catalog";
+import { isAbort } from "../api/http";
 import { postLink } from "../api/link";
 import type { LinkReply } from "../api/link";
 import { regionToAsk, visibleRegion } from "../scene/link";
 import type { ChannelMap, ChannelState, Region, Size, SkyMap, SkyState } from "../scene/link";
 import type { Scene } from "../scene/scene";
 
-const IDLE_SKY: SkyState = { status: "idle", refused: null, map: null };
-const IDLE_CHANNEL: ChannelState = { status: "idle", refused: null, map: null };
+const IDLE_SKY: SkyState = { status: "idle" };
+const IDLE_CHANNEL: ChannelState = { status: "idle" };
 const SETTLE_MS = 120; // a zoom or pan gesture settles before the worker is asked
 
 const reason = (e: unknown) => (e instanceof ApiError ? e.message : "The link could not be computed.");
-const aborted = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 
 function skyOf(r: LinkReply): SkyState {
   const s = r.sky;
-  if (!s) return { status: "refused", refused: "the worker sent no sky transform", map: null };
-  if (s.refused || !s.affine || !s.region || s.max_error_px === undefined || s.scale === undefined || !s.b_shape || !s.frames) return { status: "refused", refused: s.refused ?? "the worker sent an incomplete transform", map: null };
+  if (!s) return { status: "refused", refused: "the worker sent no sky transform" };
+  if (s.refused || !s.affine || !s.region || s.max_error_px === undefined || s.scale === undefined || !s.b_shape || !s.frames) return { status: "refused", refused: s.refused ?? "the worker sent an incomplete transform" };
   const map: SkyMap = {
     affine: s.affine, region: { x0: s.region.x0, y0: s.region.y0, x1: s.region.x1, y1: s.region.y1 }, maxErrorPx: s.max_error_px, scale: s.scale,
     bShape: [s.b_shape[0]!, s.b_shape[1]!], frames: { from: s.frames.from ?? "", to: s.frames.to ?? "", sameFrame: !!s.frames.same_frame },
   };
-  return { status: "ready", refused: null, map };
+  return { status: "ready", map };
 }
 
 function channelsOf(r: LinkReply): ChannelState {
   const s = r.spectral;
-  if (!s) return { status: "refused", refused: "the worker sent no channel link", map: null };
-  if (s.refused || !s.index || !s.residual || !s.outside || !s.unit) return { status: "refused", refused: s.refused ?? "the worker sent an incomplete channel link", map: null };
+  if (!s) return { status: "refused", refused: "the worker sent no channel link" };
+  if (s.refused || !s.index || !s.residual || !s.outside || !s.unit) return { status: "refused", refused: s.refused ?? "the worker sent an incomplete channel link" };
   const map: ChannelMap = { index: s.index, residual: s.residual, outside: s.outside, unit: s.unit, basis: s.basis ?? "" };
-  return { status: "ready", refused: null, map };
+  return { status: "ready", map };
 }
 
 /**
@@ -43,14 +43,14 @@ export function useSkyLink(enabled: boolean, from: number | null, to: number | n
   const [kept, setKept] = useState<Region | null>(null);
   const pair = `${from}>${to}|${stamp}`;
   const view = scene?.view;
-  const win = useMemo(() => (view && image ? visibleRegion(view, image, pane) : null), [view?.zoom, view?.centre?.x, view?.centre?.y, image?.w, image?.h, pane?.w, pane?.h]); // eslint-disable-line react-hooks/exhaustive-deps
+  const win = useMemo(() => (view && image ? visibleRegion(view, image, pane) : null), [view?.zoom, view?.centre?.x, view?.centre?.y, image?.w, image?.h, pane?.w, pane?.h]);
   useEffect(() => {
     setKept(null);
   }, [pair]);
   useEffect(() => {
     if (!enabled || !win) return;
     setKept((k) => regionToAsk(k, win));
-  }, [enabled, win?.x0, win?.x1, win?.y0, win?.y1, pair]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, win?.x0, win?.x1, win?.y0, win?.y1, pair]);
   useEffect(() => {
     if (!enabled || from === null || to === null || !kept) return;
     const ac = new AbortController();
@@ -58,16 +58,16 @@ export function useSkyLink(enabled: boolean, from: number | null, to: number | n
       postLink(from, { otherId: to, region: kept }, ac.signal)
         .then((r) => setState({ key: pair, s: skyOf(r) }))
         .catch((e: unknown) => {
-          if (!aborted(e)) setState({ key: pair, s: { status: "refused", refused: reason(e), map: null } });
+          if (!isAbort(e)) setState({ key: pair, s: { status: "refused", refused: reason(e) } });
         });
     }, SETTLE_MS);
     return () => {
       clearTimeout(t);
       ac.abort();
     };
-  }, [enabled, from, to, kept?.x0, kept?.x1, kept?.y0, kept?.y1, pair]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, from, to, kept?.x0, kept?.x1, kept?.y0, kept?.y1, pair]);
   if (!enabled) return IDLE_SKY;
-  if (state.key !== pair) return { status: "loading", refused: null, map: null };
+  if (state.key !== pair) return { status: "loading" };
   return state.s;
 }
 
@@ -81,11 +81,11 @@ export function useChannelLink(enabled: boolean, from: number | null, to: number
     postLink(from, { otherId: to, channels: true }, ac.signal)
       .then((r) => setState({ key: pair, s: channelsOf(r) }))
       .catch((e: unknown) => {
-        if (!aborted(e)) setState({ key: pair, s: { status: "refused", refused: reason(e), map: null } });
+        if (!isAbort(e)) setState({ key: pair, s: { status: "refused", refused: reason(e) } });
       });
     return () => ac.abort();
   }, [enabled, from, to, pair]);
   if (!enabled) return IDLE_CHANNEL;
-  if (state.key !== pair) return { status: "loading", refused: null, map: null };
+  if (state.key !== pair) return { status: "loading" };
   return state.s;
 }

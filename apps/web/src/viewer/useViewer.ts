@@ -5,7 +5,7 @@ import type { PolicyChoice } from "../catalog/MaskPolicies";
 import { useMasks } from "./useMasks";
 import { expandPreview, getAxial, isVirtualId, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
 import { isOfflineMissing, setOfflineMissing } from "../api/offlineState";
-import { newRequestId } from "../api/http";
+import { newRequestId, isAbort } from "../api/http";
 import type { AxialStats, Conversions, Converted, Coord, LineShape, Plane, RegionShape, Spectrum, View } from "../api/planes";
 import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
@@ -27,7 +27,6 @@ export type Pixel = { x: number; y: number };
 export type ConvChoice = { spectral: string; convention: string; frame: string; to: string };
 export const NO_CONV: ConvChoice = { spectral: "", convention: "radio", frame: "", to: "" };
 
-const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 /**
@@ -167,7 +166,7 @@ export function useViewer(dataset: Dataset | null) {
       .then(setView)
       .catch((e: unknown) => !isAbort(e) && setViewError(message(e, "Could not read the dataset layout.")));
     return () => ac.abort();
-  }, [datasetId, retry, fileTime]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, retry, fileTime]);
 
   // Declaring or withdrawing a unit, or a correction, changes what every head says. Read the layout again (the plane and the spectrum follow the
   // new view) without starting over: the channel and the region stay. A different dataset starts over by itself, above.
@@ -278,7 +277,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, probe?.x, probe?.y, shownChannel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, probe?.x, probe?.y, shownChannel]);
 
   // What the file allows (spectral units, sky frames, brightness units) is read again whenever the layout is: a declared unit changes it.
   useEffect(() => {
@@ -338,7 +337,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, convKey, convWanted]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, convKey, convWanted]);
 
   // The mean spectrum of the region, from the worker. A newer region aborts the older request.
   useEffect(() => {
@@ -370,7 +369,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, view, region, maskKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, view, region, maskKey]);
 
   // The paired reliability map (one plane), for readouts and line opacity.
   useEffect(() => {
@@ -407,7 +406,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, view, interp?.kind, unit, relId, region]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, view, interp?.kind, unit, relId, region]);
 
   const channels = view?.channels ?? 0;
   const onChannelKey = useCallback(

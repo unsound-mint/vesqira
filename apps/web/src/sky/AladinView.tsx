@@ -145,7 +145,7 @@ export function AladinView({ survey, frame, fit, items, selectedId, cursor, onPi
       onApi(null);
       el.replaceChildren(); // Aladin Lite has no destroy: its canvas goes with its element
     };
-  }, [survey.url, survey.host, frame]); // eslint-disable-line react-hooks/exhaustive-deps -- callbacks are read through `latest`
+  }, [survey.url, survey.host, frame]); // callbacks are read through `latest`
 
   // go where the panel says when the selection or "fit" changes
   useEffect(() => {
@@ -154,7 +154,7 @@ export function AladinView({ survey, frame, fit, items, selectedId, cursor, onPi
       live.current.al.gotoRaDec(f.lon, f.lat);
       live.current.al.setFoV(f.fov);
     }
-  }, [fit.key]); // eslint-disable-line react-hooks/exhaustive-deps -- the key names the view
+  }, [fit.key]); // the key names the view
 
   // the footprints, the selected one heavier (and the list beside the picture names it, so colour is not the only cue)
   useEffect(() => {

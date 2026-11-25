@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { authState } from "../api/accounts";
-import { ApiError } from "../api/http";
+import { errorMessage } from "../api/http";
 import { listPushed } from "../api/push";
 import type { PushedSummary } from "../api/push";
 import { boundText, declineRunRequest, fileRunRequest, getRunRequest, hours, isOpen, listRunInboxes, listRunRequests, noteRunRequest, previewRunRequest, stateText, withdrawRunRequest } from "../api/runRequests";
 import type { GrantOffer, RelayResources, RunInbox, RunRequest, RunRequestDetail, RunRequestFile, RunRequestPreview, TemplateBounds } from "../api/runRequests";
-import { Button, Input, LinkButton, Select } from "../ui";
+import { Button, Input, LinkButton, Select, formatWhen, formatDay } from "../ui";
 import { useCan } from "../account/permissions";
 import s from "../account/Account.module.css";
 import r from "./RunRequests.module.css";
 import { grantKeysText } from "./StandingApprovals";
 
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
-const when = (iso: string) => iso.slice(0, 16).replace("T", " ");
 
 /**
  * Asking a key holder to run a VGT or ROHSA job (ADR 0066 section 3), on the group server. The form offers only what the chosen
@@ -27,10 +25,10 @@ export function RunRequestsPage() {
   const [runs, setRuns] = useState<PushedSummary[]>([]);
   const [me, setMe] = useState("");
   const [error, setError] = useState("");
-  const refresh = useCallback(() => listRunRequests().then(setRequests, (e) => setError(message(e))), []);
+  const refresh = useCallback(() => listRunRequests().then(setRequests, (e) => setError(errorMessage(e))), []);
   useEffect(() => {
     void refresh();
-    void listRunInboxes().then(setInboxes, (e) => setError(message(e)));
+    void listRunInboxes().then(setInboxes, (e) => setError(errorMessage(e)));
     void authState().then((a) => setMe(a.account?.id ?? ""), () => undefined);
     // the base is optional: without access to pushed work the form simply offers none
     void listPushed().then((l) => setRuns(l.items.filter((x) => x.kind === "run" && !x.archived)), () => undefined);
@@ -102,7 +100,7 @@ function RequestForm({ inboxes, runs, onFiled }: { inboxes: RunInbox[]; runs: Pu
     if (!previewKey) { setPreview(null); return; }
     let live = true;
     const t = setTimeout(() => {
-      previewRunRequest(JSON.parse(previewKey) as RunRequestFile).then((p) => { if (live) setPreview(p); }, (e) => { if (live) setPreview({ route: "review", reason: message(e) }); });
+      previewRunRequest(JSON.parse(previewKey) as RunRequestFile).then((p) => { if (live) setPreview(p); }, (e) => { if (live) setPreview({ route: "review", reason: errorMessage(e) }); });
     }, 300);
     return () => { live = false; clearTimeout(t); };
   }, [previewKey]);
@@ -120,7 +118,7 @@ function RequestForm({ inboxes, runs, onFiled }: { inboxes: RunInbox[]; runs: Pu
       setNote("");
       reset();
       return onFiled();
-    }, (err) => setError(message(err))).finally(() => setBusy(false));
+    }, (err) => setError(errorMessage(err))).finally(() => setBusy(false));
   };
 
   return (
@@ -133,7 +131,7 @@ function RequestForm({ inboxes, runs, onFiled }: { inboxes: RunInbox[]; runs: Pu
             <option value="">Choose a member</option>
             {inboxes.map((i) => <option key={i.account} value={i.account}>{i.name}{i.inbox.paused ? " (paused)" : ""}</option>)}
           </Select>
-          {inbox?.polledAt ? <p className={s.note}>{inbox.name}&apos;s computer last checked at {when(inbox.polledAt)}.</p> : inbox ? <p className={s.note}>{inbox.name}&apos;s computer has not checked yet.</p> : null}
+          {inbox?.polledAt ? <p className={s.note}>{inbox.name}&apos;s computer last checked at {formatWhen(inbox.polledAt)}.</p> : inbox ? <p className={s.note}>{inbox.name}&apos;s computer has not checked yet.</p> : null}
           {inbox ? (
             <Select label="Cluster label" value={label} onChange={(e) => { setLabel(e.target.value); setTemplate(""); reset(); }} required>
               <option value="">Choose a label</option>
@@ -150,7 +148,7 @@ function RequestForm({ inboxes, runs, onFiled }: { inboxes: RunInbox[]; runs: Pu
             <Select label="Standing approval" value={grant} onChange={(e) => setGrant(e.target.value)}
               description="The key holder lets some of your requests run without a click, inside narrower terms and a budget.">
               <option value="">None: the key holder reads the script and approves</option>
-              {offers.map((o) => <option key={o.id} value={o.id}>{grantKeysText(o.keys)}, until {o.expiresAt.slice(0, 10)}, {o.maxJobs - o.jobsUsed} of {o.maxJobs} jobs left</option>)}
+              {offers.map((o) => <option key={o.id} value={o.id}>{grantKeysText(o.keys)}, until {formatDay(o.expiresAt)}, {o.maxJobs - o.jobsUsed} of {o.maxJobs} jobs left</option>)}
             </Select>
           ) : null}
           {offer ? (
@@ -228,7 +226,7 @@ function RequestForm({ inboxes, runs, onFiled }: { inboxes: RunInbox[]; runs: Pu
 function RequestList({ requests, me, onChange }: { requests: RunRequest[]; me: string; onChange: () => unknown }) {
   const [open, setOpen] = useState<RunRequestDetail | null>(null);
   const [error, setError] = useState("");
-  const show = (id: number) => getRunRequest(id).then(setOpen, (e) => setError(message(e)));
+  const show = (id: number) => getRunRequest(id).then(setOpen, (e) => setError(errorMessage(e)));
   return (
     <>
       {error ? <p className={s.error} role="alert">{error}</p> : null}
@@ -241,7 +239,7 @@ function RequestList({ requests, me, onChange }: { requests: RunRequest[]; me: s
               <td>{q.requesterName}{q.requester === me ? " (you)" : ""}</td>
               <td>{q.addresseeName}{q.addressee === me ? " (you)" : ""}</td>
               <td>{stateText(q.state)}</td>
-              <td>{isOpen(q.state) ? when(q.expiresAt) : ""}</td>
+              <td>{isOpen(q.state) ? formatWhen(q.expiresAt) : ""}</td>
             </tr>
           ))}
         </tbody>
@@ -255,12 +253,12 @@ function RequestDetail({ detail, me, onChange }: { detail: RunRequestDetail; me:
   const q = detail.request;
   const [text, setText] = useState("");
   const [error, setError] = useState("");
-  const run = (p: Promise<unknown>) => { setError(""); p.then(() => { setText(""); return onChange(); }, (e) => setError(message(e))); };
+  const run = (p: Promise<unknown>) => { setError(""); p.then(() => { setText(""); return onChange(); }, (e) => setError(errorMessage(e))); };
   const open = isOpen(q.state);
   return (
     <section className={s.card} aria-label={`Request ${q.id}`}>
       <h3 className={s.h2}>{q.ask.template} on {q.ask.label}</h3>
-      <p className={s.note}>{q.requesterName} to {q.addresseeName}: {stateText(q.state)}{q.reportedAt ? `, reported by ${q.addresseeName}'s computer at ${when(q.reportedAt)}` : ""}.</p>
+      <p className={s.note}>{q.requesterName} to {q.addresseeName}: {stateText(q.state)}{q.reportedAt ? `, reported by ${q.addresseeName}'s computer at ${formatWhen(q.reportedAt)}` : ""}.</p>
       {q.baseTitle ? <p className={s.note}>Based on {q.baseTitle}.</p> : null}
       {Object.keys(q.ask.params).length ? <p className={s.note}>Settings: {Object.entries(q.ask.params).map(([k, v]) => `${k} = ${v}`).join(", ")}</p> : null}
       {q.ask.grant ? <p className={s.note}>Filed under a standing approval: the key holder&apos;s computer submits it without a click if every term holds there; otherwise it waits for review and the events below say why.</p> : null}
@@ -269,7 +267,7 @@ function RequestDetail({ detail, me, onChange }: { detail: RunRequestDetail; me:
       {q.declineNote ? <p className={`${s.note} ${r.plain}`}>Declined: {q.declineNote}</p> : null}
       {q.closedNote ? <p className={s.note}>{q.closedNote}</p> : null}
       <ol>
-        {detail.events.map((ev, i) => <li key={i} className={s.note}>{when(ev.at)} {ev.name || ev.actor}: {ev.event}{ev.detail ? `, ${ev.detail}` : ""} ({ev.via})</li>)}
+        {detail.events.map((ev, i) => <li key={i} className={s.note}>{formatWhen(ev.at)} {ev.name || ev.actor}: {ev.event}{ev.detail ? `, ${ev.detail}` : ""} ({ev.via})</li>)}
       </ol>
       {error ? <p className={s.error} role="alert">{error}</p> : null}
       <label className={r.area}>

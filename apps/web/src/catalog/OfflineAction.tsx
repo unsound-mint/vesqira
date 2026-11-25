@@ -1,14 +1,13 @@
 import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { forgetOffline, getOffline } from "../api/offline";
 import type { OfflineDataset } from "../api/offline";
-import { Button, Pill } from "../ui";
+import { Button, Pill, formatWhen } from "../ui";
 import { bytes } from "./format";
 import s from "./OfflineSheet.module.css";
 
 // The sheet brings React Aria with it, so it loads only when someone asks to prepare.
 const OfflineSheet = lazy(() => import("./OfflineSheet"));
 
-const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 /**
  * "Prepare for offline…" for a dataset on a host, with what is kept now: when it was taken, what it covers, whether it is stale,
@@ -33,7 +32,7 @@ export function DatasetOffline({ id, name, hostId }: { id: number; name: string;
         <>
           <div className={s.row}>
             <Pill tone={copy.stale ? "warn" : "ok"}>{copy.stale ? "Stale: the file changed" : "Copy is current"}</Pill>
-            <span className={s.coverage}>{bytes(copy.bytes)} · taken {when(copy.takenAt)}</span>
+            <span className={s.coverage}>{bytes(copy.bytes)} · taken {formatWhen(copy.takenAt)}</span>
           </div>
           <p className={s.coverage}>{copy.stale ? "The file on the host is no longer the one this was made from, so it is kept but never served. Prepare it again. " : ""}Kept: {copy.coverage || "nothing usable"}.</p>
         </>

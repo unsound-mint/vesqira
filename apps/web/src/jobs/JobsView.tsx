@@ -65,7 +65,7 @@ export function JobsView({ hosts, focusJob = null, onImported, onOpenRun, onOpen
     if (!job || !ACTIVE.includes(job.state)) return;
     const t = setInterval(() => refreshJob(job.id).then(replace).catch(() => undefined), 15000);
     return () => clearInterval(t);
-  }, [job?.id, job?.state]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [job?.id, job?.state]);
 
   return (
     <div className={s.root}>
@@ -121,7 +121,7 @@ function JobDetail({ job, host, onChange, onImported, onOpenRun, onSweep }: { jo
     setLog(null);
     setErr(null);
     setRun(null);
-  }, [job.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [job.id]);
 
   async function act<T>(f: () => Promise<T>, then?: (r: T) => void) {
     setBusy(true);

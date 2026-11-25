@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { ApiError } from "../api/http";
+import { errorMessage } from "../api/http";
 import { linkGroup, outbox, retryOutbox, unlinkGroup } from "../api/push";
 import type { GroupLink, OutboxEntry } from "../api/push";
-import { Button, Input, LinkButton } from "../ui";
+import { Button, Input, LinkButton, formatWhen } from "../ui";
 import { forgetLink } from "./PushButton";
 import s from "../account/Account.module.css";
 
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
 
 /**
  * The local instance's link to a group server and its push queue (ADR 0066 sections 1 and 2). Linking takes the server's https
@@ -21,7 +20,7 @@ export function GroupPage() {
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const refresh = useCallback(() => outbox().then((o) => { setLink(o.link); setEntries(o.entries); }, (e) => setError(message(e))), []);
+  const refresh = useCallback(() => outbox().then((o) => { setLink(o.link); setEntries(o.entries); }, (e) => setError(errorMessage(e))), []);
   useEffect(() => {
     void refresh();
     const t = setInterval(() => void refresh(), 5000);
@@ -31,7 +30,7 @@ export function GroupPage() {
     e.preventDefault();
     setBusy(true);
     setError("");
-    linkGroup(origin, token).then((l) => { forgetLink(); setLink(l); setToken(""); void refresh(); }, (err) => setError(message(err))).finally(() => setBusy(false));
+    linkGroup(origin, token).then((l) => { forgetLink(); setLink(l); setToken(""); void refresh(); }, (err) => setError(errorMessage(err))).finally(() => setBusy(false));
   };
   return (
     <main className={`${s.page} ${s.wide}`}>
@@ -46,8 +45,8 @@ export function GroupPage() {
           <h2 className={s.h2}>Linked to {link.workspace || "a workspace"}</h2>
           <p className={s.note}>{link.origin}, since {link.linkedAt?.slice(0, 10)}. Pushing sends frozen copies (the picture, the reviewer-safe provenance, the run line, a board snapshot or a report revision) and never a path, host name, cluster user name or this computer&apos;s ids.</p>
           <div className={s.row}>
-            <Button onClick={() => void retryOutbox().then(refresh, (e) => setError(message(e)))}>Try waiting items now</Button>
-            <Button variant="danger" onClick={() => { if (confirm("Unlink this computer? The token file is deleted and the queue emptied. Your work here is untouched, what was pushed stays on the server, and linking again to the same server continues where it left off.")) void unlinkGroup().then(() => { forgetLink(); return refresh(); }, (e) => setError(message(e))); }}>Unlink</Button>
+            <Button onClick={() => void retryOutbox().then(refresh, (e) => setError(errorMessage(e)))}>Try waiting items now</Button>
+            <Button variant="danger" onClick={() => { if (confirm("Unlink this computer? The token file is deleted and the queue emptied. Your work here is untouched, what was pushed stays on the server, and linking again to the same server continues where it left off.")) void unlinkGroup().then(() => { forgetLink(); return refresh(); }, (e) => setError(errorMessage(e))); }}>Unlink</Button>
           </div>
         </section>
       ) : (
@@ -72,7 +71,7 @@ export function GroupPage() {
                   <td>{e.title}</td>
                   <td>{e.kind}</td>
                   <td role="status">{e.status}{e.state === "waiting" && e.nextAt ? ` (next try ${e.nextAt.slice(11, 16)} UTC)` : ""}</td>
-                  <td>{e.createdAt.slice(0, 16).replace("T", " ")}</td>
+                  <td>{formatWhen(e.createdAt)}</td>
                 </tr>
               ))}
             </tbody>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getRegionHistogram } from "../api/planes";
 import type { RegionHistogramResult, RegionShape } from "../api/planes";
-import { ApiError } from "../api/http";
+import { ApiError, isAbort } from "../api/http";
 import type { MaskUse } from "../api/masks";
 
 export type MaskedHistogram = { result: RegionHistogramResult | null; error: string | null };
@@ -21,12 +21,12 @@ export function useMaskedHistogram(datasetId: number | null, channel: number, re
       getRegionHistogram(datasetId!, channel, region!, min!, max!, bins, uses, ac.signal)
         .then((result) => setGot({ key, result, error: null }))
         .catch((e: unknown) => {
-          if (e instanceof DOMException && e.name === "AbortError") return;
+          if (isAbort(e)) return;
           setGot({ key, result: null, error: e instanceof ApiError ? e.message : "Could not count the region with these masks." });
         });
     }, 120);
     return () => { clearTimeout(t); ac.abort(); };
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key]);
   if (key === null) return null;
   return got && got.key === key ? { result: got.result, error: got.error } : { result: null, error: null };
 }

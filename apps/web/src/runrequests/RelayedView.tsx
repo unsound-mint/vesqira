@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError } from "../api/http";
+import { ApiError, errorMessage } from "../api/http";
 import { listRuns } from "../api/runs";
 import type { Run } from "../api/runs";
 import { approveRelayed, declineRelayed, detachRelayed, draftRelayed, getRelayed, grantFellBack, grantStateText, stateText } from "../api/runRequests";
 import type { Relayed, RelayedDetail } from "../api/runRequests";
-import { Button, Checkbox, Input, Select } from "../ui";
+import { Button, Checkbox, Input, Select, formatWhen } from "../ui";
 import s from "../account/Account.module.css";
 import r from "./RunRequests.module.css";
 
-const when = (iso: string) => iso.slice(0, 16).replace("T", " ");
 
 /** An approval that did not go through, in the server's words plus what it means for the job: nothing is submitted without the claim. */
 function approvalError(e: unknown): string {
@@ -19,7 +18,6 @@ function approvalError(e: unknown): string {
   }
   return e instanceof Error ? e.message : "Something went wrong.";
 }
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
 
 const changesText = (p: Record<string, string>) => Object.entries(p).map(([k, v]) => `${k} = ${v}`).join("\n");
 function parseChanges(text: string): Record<string, string> {
@@ -42,7 +40,7 @@ export function RelayedView({ summary, onChanged, onClose }: { summary: Relayed;
   const [runs, setRuns] = useState<Run[]>([]);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
-  const load = useCallback(() => getRelayed(summary.id).then(setDetail, (e) => setError(message(e))), [summary.id]);
+  const load = useCallback(() => getRelayed(summary.id).then(setDetail, (e) => setError(errorMessage(e))), [summary.id]);
   useEffect(() => {
     void load();
     void listRuns().then(setRuns, () => undefined);
@@ -56,7 +54,7 @@ export function RelayedView({ summary, onChanged, onClose }: { summary: Relayed;
         <h2 className={s.h2}>{ask.template} on {ask.label}, from {q.request.requester}</h2>
         <Button onClick={onClose}>Close</Button>
       </div>
-      <p className={s.note}>{q.localState}{q.refusal ? `: ${q.refusal}` : ""}. On the server: {stateText(q.serverState)}. Expires {when(q.request.expiresAt)}.{q.request.base ? ` Based on ${q.request.base.title}.` : ""}</p>
+      <p className={s.note}>{q.localState}{q.refusal ? `: ${q.refusal}` : ""}. On the server: {stateText(q.serverState)}. Expires {formatWhen(q.request.expiresAt)}.{q.request.base ? ` Based on ${q.request.base.title}.` : ""}</p>
       {detail?.outsideBounds ? <p className={r.warn} role="alert">{detail.outsideBounds}</p> : null}
       <GrantNote relayed={q} />
       <Ask relayed={q} />
@@ -78,7 +76,7 @@ export function RelayedView({ summary, onChanged, onClose }: { summary: Relayed;
       {/* a request that closed while drafted leaves drafts that cannot be submitted under it: keeping them as your own frees them */}
       {q.localState === "closed" && (detail?.job != null || (detail?.sweep?.drafts.length ?? 0) > 0) ? (
         <div className={s.row}>
-          <Button onClick={() => detachRelayed(q.id).then(() => { setError(""); setDone("Detached: the drafts are now your own."); void onChanged(); void load(); }, (e) => { setError(message(e)); setDone(""); })}>Keep the drafts as my own</Button>
+          <Button onClick={() => detachRelayed(q.id).then(() => { setError(""); setDone("Detached: the drafts are now your own."); void onChanged(); void load(); }, (e) => { setError(errorMessage(e)); setDone(""); })}>Keep the drafts as my own</Button>
         </div>
       ) : null}
     </section>
@@ -112,7 +110,7 @@ function Ask({ relayed }: { relayed: Relayed }) {
       <p className={s.note}>Resources asked for: {res.cpus ? `${res.cpus} CPUs` : "CPUs as the base"}, {res.memGiB ? `${res.memGiB} GiB` : "memory as the base"}, {res.timeMinutes ? `${res.timeMinutes} minutes` : "time as the base"}.</p>
       {ask.grid.length ? <p className={s.note}>Grid: {ask.grid.map((g) => `${g.key} in ${g.values.join(", ")}`).join("; ")}</p> : null}
       {ask.note ? <p className={`${s.note} ${r.plain}`}>Note from {relayed.request.requester}: {ask.note}</p> : null}
-      {relayed.request.notes.map((n, i) => <p key={i} className={`${s.note} ${r.plain}`}>Follow-up ({when(n.at)}): {n.text}</p>)}
+      {relayed.request.notes.map((n, i) => <p key={i} className={`${s.note} ${r.plain}`}>Follow-up ({formatWhen(n.at)}): {n.text}</p>)}
     </div>
   );
 }
@@ -131,7 +129,7 @@ function DraftForm({ relayed, runs, onDrafted, onError }: { relayed: Relayed; ru
       baseRunId: base ? Number(base) : undefined,
       changes: parseChanges(changes),
       resources: { cpus: numberOrUndef(cpus), memGiB: numberOrUndef(mem), timeMinutes: numberOrUndef(time) },
-    }).then(() => onDrafted(), (e) => onError(message(e))).finally(() => setBusy(false));
+    }).then(() => onDrafted(), (e) => onError(errorMessage(e))).finally(() => setBusy(false));
   };
   return (
     <fieldset className={s.form}>
@@ -216,7 +214,7 @@ function SweepReview({ detail, onError, onDone }: Review) {
 
 function Actions({ relayed, onError, onDone }: { relayed: Relayed; onError: (m: string) => void; onDone: (m: string) => void }) {
   const [note, setNote] = useState("");
-  const run = (p: Promise<unknown>, ok: string) => p.then(() => onDone(ok), (e) => onError(message(e)));
+  const run = (p: Promise<unknown>, ok: string) => p.then(() => onDone(ok), (e) => onError(errorMessage(e)));
   return (
     <fieldset className={s.form}>
       <legend className={s.note}>Not running it</legend>

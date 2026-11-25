@@ -94,6 +94,7 @@ export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true, s
   const latest = useRef(shown);
   latest.current = shown;
   useEffect(() => {
+    // `key` names every input, so the entries are read through `latest` and a new array alone does not restart the reads
     if (!enabled) return;
     let live = true;
     const byId = new Map<number, SkyItem>();
@@ -117,7 +118,7 @@ export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true, s
     return () => {
       live = false;
     };
-  }, [key, enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- `key` names every input
+  }, [key, enabled]);
   const items = useMemo<SkyItem[]>(
     () => shown.map((d) => (done.key === key ? done.byId.get(d.id) : undefined) ?? { id: d.id, name: d.name, state: "loading", reason: null, outline: null, fromFrame: null, fromStatus: null }),
     [shown, done, key],
@@ -127,8 +128,8 @@ export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true, s
 
 const NO_SUBSETS: SubsetView[] = [];
 
-export type Cursor = { state: "off" | "loading" | "ready" | "none"; lon: number | null; lat: number | null; reason: string | null };
-const OFF: Cursor = { state: "off", lon: null, lat: null, reason: null };
+export type Cursor = { state: "off" | "loading" } | { state: "ready"; lon: number; lat: number } | { state: "none"; reason: string };
+const OFF: Cursor = { state: "off" };
 
 /**
  * The viewer's cursor pixel as a world position in the panel's frame, asked of the worker (the pixel is the viewer's; the position is
@@ -138,13 +139,14 @@ export function useSkyCursor(datasetId: number | null, probe: { x: number; y: nu
   const [cur, setCur] = useState<{ key: string; c: Cursor }>({ key: "", c: OFF });
   const key = datasetId === null || !probe ? "" : `${datasetId}|${probe.x}|${probe.y}|${frame}`;
   useEffect(() => {
+    // `key` names every input
     if (!key || datasetId === null || !probe) return;
     const ac = new AbortController();
     const t = setTimeout(() => {
       getSkyPoint(datasetId, frame, probe.x, probe.y, ac.signal).then(
-        (r) => setCur({ key, c: r.position ? { state: "ready", lon: r.position.lon, lat: r.position.lat, reason: null } : { state: "none", lon: null, lat: null, reason: r.reason ?? "no position" } }),
+        (r) => setCur({ key, c: r.position ? { state: "ready", lon: r.position.lon, lat: r.position.lat } : { state: "none", reason: r.reason ?? "no position" } }),
         (e: unknown) => {
-          if (!ac.signal.aborted) setCur({ key, c: { state: "none", lon: null, lat: null, reason: e instanceof ApiError ? e.message : "could not be read" } });
+          if (!ac.signal.aborted) setCur({ key, c: { state: "none", reason: e instanceof ApiError ? e.message : "could not be read" } });
         },
       );
     }, 60);
@@ -152,7 +154,7 @@ export function useSkyCursor(datasetId: number | null, probe: { x: number; y: nu
       clearTimeout(t);
       ac.abort();
     };
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- `key` names every input
+  }, [key]);
   if (!key) return OFF;
-  return cur.key === key ? cur.c : { state: "loading", lon: null, lat: null, reason: null };
+  return cur.key === key ? cur.c : { state: "loading" };
 }

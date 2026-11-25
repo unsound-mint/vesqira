@@ -76,7 +76,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
     };
     el.addEventListener("wheel", wheel, { passive: false });
     return () => el.removeEventListener("wheel", wheel);
-  }, [plane, v.zoom]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [plane, v.zoom]);
 
   // A canvas keeps the kind of context it first gave out, so the GPU and CPU paths draw on different canvas elements.
   const outSize = plane && shape.scale > 0 ? outputSize(plane.head.width, plane.head.height, shape.scale) : null;
@@ -117,7 +117,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
     canvas.height = img.height;
     ctx.putImageData(new ImageData(img.pixels, img.width, img.height), 0, 0);
     drawn.current?.(plane);
-  }, [plane, v.colormap, v.stretch, v.range, v.customLimits, v.interp, shape.scale, useGpu, canvasKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [plane, v.colormap, v.stretch, v.range, v.customLimits, v.interp, shape.scale, useGpu, canvasKey]);
   useEffect(() => () => { gl.current?.dispose(); gl.current = null; setRendererNote(null); }, []);
 
   function pick(e: MouseEvent<HTMLCanvasElement>) {
@@ -198,7 +198,7 @@ export function PlaneViewer({ v, onProbe, onDrawn, onSize }: { v: Viewer; onProb
       const h = plane.head.height;
       return [...layers, ...(v.path ? lineMarks(v.path.points, h, "region") : []), ...(lineDraft ? lineMarks(lineDraft.points, h, "draft") : [])];
     },
-    [v.scene?.overlays, v.scene?.base.datasetId, plane, shape.scale, v.interp, v.reliability, draft, v.geometry, v.path, lineDraft], // eslint-disable-line react-hooks/exhaustive-deps
+    [v.scene?.overlays, v.scene?.base.datasetId, plane, shape.scale, v.interp, v.reliability, draft, v.geometry, v.path, lineDraft],
   );
   const labels = useMemo(() => marks.filter((m): m is Extract<Mark, { type: "text" }> => m.type === "text"), [marks]);
   const sources = useMemo(() => marks.filter((m): m is Extract<Mark, { type: "marker" }> => m.type === "marker"), [marks]);

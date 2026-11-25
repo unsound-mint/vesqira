@@ -52,7 +52,6 @@ export function NewJob({ hosts, jobs, templates, onCreated }: { hosts: Host[]; j
     setLoaded(false);
     setVals({});
     setWas({});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   if (hosts.length === 0) return <p className={s.note}>Add a host first (Hosts in the explorer). Jobs run on a host with Slurm, never on the login node itself.</p>;

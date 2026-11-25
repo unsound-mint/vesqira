@@ -58,7 +58,7 @@ export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: D
     setExcluded(preset.excluded ?? []);
     setResult(null);
     setErr(null);
-  }, [preset?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [preset?.nonce]);
 
   const byId = useMemo(() => new Map(images.map((d) => [d.id, d])), [images]);
   const chosen = ids.map((id) => byId.get(id)).filter((d): d is NonNullable<typeof d> => !!d);

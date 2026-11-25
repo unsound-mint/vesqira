@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError } from "../api/http";
+import { errorMessage } from "../api/http";
 import { boundText, createGrant, hours, listGrants, relayMembers, revokeGrant } from "../api/runRequests";
 import type { Bound, Grant, GrantList, RelayLocal, RelayMember } from "../api/runRequests";
-import { Button, Checkbox, Input, Pill, Select } from "../ui";
+import { Button, Checkbox, Input, Pill, Select, formatDay } from "../ui";
 import s from "../account/Account.module.css";
 import r from "./RunRequests.module.css";
 
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
-const day = (iso: string) => iso.slice(0, 10);
 const lines = (t: string) => t.split("\n").map((x) => x.trim()).filter(Boolean);
 
 /** A grant's narrowed settings as one line: "ker 4 to 8; dn one of 8, 16". */
@@ -17,10 +15,10 @@ export function grantKeysText(keys: Bound[]): string {
 }
 
 function status(g: Grant): { tone: "ok" | "warn" | "neutral"; text: string } {
-  if (g.revokedAt) return { tone: "neutral", text: `revoked ${day(g.revokedAt)}` };
-  if (!g.live) return { tone: "neutral", text: `expired ${day(g.expiresAt)}` };
+  if (g.revokedAt) return { tone: "neutral", text: `revoked ${formatDay(g.revokedAt)}` };
+  if (!g.live) return { tone: "neutral", text: `expired ${formatDay(g.expiresAt)}` };
   if (g.jobsUsed >= g.maxJobs || g.coreMinutesUsed >= g.maxCoreHours * 60) return { tone: "warn", text: "budget used up" };
-  return { tone: "ok", text: `until ${day(g.expiresAt)}` };
+  return { tone: "ok", text: `until ${formatDay(g.expiresAt)}` };
 }
 
 /** Usage against one budget line, as text and a bar (the text carries the meaning; the bar is a glance). */
@@ -46,7 +44,7 @@ export function StandingApprovals({ local, onChanged }: { local: RelayLocal; onC
   const [done, setDone] = useState("");
   const [creating, setCreating] = useState(false);
   const [confirm, setConfirm] = useState("");
-  const load = useCallback(() => listGrants().then(setList, (e) => setError(message(e))), []);
+  const load = useCallback(() => listGrants().then(setList, (e) => setError(errorMessage(e))), []);
   useEffect(() => {
     void load();
     void relayMembers().then(setMembers, () => setMembers([]));
@@ -62,7 +60,7 @@ export function StandingApprovals({ local, onChanged }: { local: RelayLocal; onC
       setDone(`Revoked the standing approval for ${x.requesterName}. Requests naming it now wait for you.${open}`);
       void onChanged();
       return load();
-    }, (e) => setError(message(e)));
+    }, (e) => setError(errorMessage(e)));
   };
   const grants = list?.grants ?? [];
   const live = grants.filter((g) => g.live);
@@ -86,7 +84,7 @@ export function StandingApprovals({ local, onChanged }: { local: RelayLocal; onC
       ) : <p className={s.note}>{list ? "No standing approval is live. Every request waits for you." : "Loading…"}</p>}
       {creating ? (
         <GrantForm local={local} list={list} members={members} onCancel={() => setCreating(false)}
-          onMade={(g) => { setCreating(false); setDone(`Made a standing approval for ${g.requesterName}, until ${day(g.expiresAt)}. It is offered at the next check.`); void onChanged(); return load(); }} />
+          onMade={(g) => { setCreating(false); setDone(`Made a standing approval for ${g.requesterName}, until ${formatDay(g.expiresAt)}. It is offered at the next check.`); void onChanged(); return load(); }} />
       ) : (
         <div className={s.row}><Button onClick={() => { setDone(""); setCreating(true); }} disabled={!local.state?.inbox.labels.length}>New standing approval</Button></div>
       )}
@@ -185,7 +183,7 @@ function GrantForm({ local, list, members, onCancel, onMade }: { local: RelayLoc
       maxJobs: Number(maxJobs) || 0, maxCoreHours: Number(coreHours) || 0, maxAtOnce: Number(atOnce) || 0,
       perJob: { maxCpus: Number(cpus) || 0, maxMemGiB: Number(mem) || 0, maxTimeMinutes: Number(time) || 0 },
       expiresInDays: Number(days) || 0, note,
-    }).then((g) => onMade(g), (e) => setError(message(e))).finally(() => setBusy(false));
+    }).then((g) => onMade(g), (e) => setError(errorMessage(e))).finally(() => setBusy(false));
   };
   return (
     <fieldset className={s.form}>
