@@ -13,6 +13,9 @@ updates:
   - package-ecosystem: npm
     directory: /e2e
     schedule: {interval: weekly}
+  - package-ecosystem: npm
+    directory: /tools/lint
+    schedule: {interval: weekly}
   - package-ecosystem: cargo
     directory: /apps/desktop
     schedule: {interval: weekly}

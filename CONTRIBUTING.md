@@ -21,7 +21,7 @@ The approved direction is recorded in ADR 0005 and `docs/design/design-direction
 ```sh
 git clone <this repository> && cd vesqira
 make setup     # checks go, node, python3; creates .venv; npm ci for web and e2e; installs Chromium for Playwright
-make check     # docs checks, fixtures, worker, Go API, typecheck, stylelint (token guard), web tests, build
+make check     # docs checks, fixtures, worker, Go API, typecheck, ESLint (web, e2e and packages; `tools/lint`), stylelint (token guard), web tests, build
 make demo      # the app on generated synthetic data: http://127.0.0.1:5173
 ```
 

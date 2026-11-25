@@ -22,7 +22,7 @@ jobs:
       # PR checkouts are merge commits and main uses squash merges, so HEAD^1 is the comparison base.
       - id: f
         run: |
-          if git diff --name-only HEAD^1 HEAD | grep -qE '^(apps/web/|design/|packages/contracts/|tools/contracts\.py$|Makefile$|\.github/workflows/ci\.yml$)'; then
+          if git diff --name-only HEAD^1 HEAD | grep -qE '^(apps/web/|e2e/|design/|packages/contracts/|tools/contracts\.py$|tools/lint/|Makefile$|\.github/workflows/ci\.yml$)'; then
             echo "web=true" >> "$GITHUB_OUTPUT"
           fi
           if git diff --name-only HEAD^1 HEAD | grep -qE '^(fixtures/|services/scientific-worker/requirements\.txt$|Makefile$|\.github/workflows/ci\.yml$)'; then
