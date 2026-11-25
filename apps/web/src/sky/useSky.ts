@@ -94,6 +94,7 @@ export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true, s
   const latest = useRef(shown);
   latest.current = shown;
   useEffect(() => {
+    // `key` names every input, so the entries are read through `latest` and a new array alone does not restart the reads
     if (!enabled) return;
     let live = true;
     const byId = new Map<number, SkyItem>();
@@ -117,7 +118,7 @@ export function useFootprints(all: Dataset[], frame: SkyFrame, enabled = true, s
     return () => {
       live = false;
     };
-  }, [key, enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- `key` names every input
+  }, [key, enabled]);
   const items = useMemo<SkyItem[]>(
     () => shown.map((d) => (done.key === key ? done.byId.get(d.id) : undefined) ?? { id: d.id, name: d.name, state: "loading", reason: null, outline: null, fromFrame: null, fromStatus: null }),
     [shown, done, key],
@@ -138,6 +139,7 @@ export function useSkyCursor(datasetId: number | null, probe: { x: number; y: nu
   const [cur, setCur] = useState<{ key: string; c: Cursor }>({ key: "", c: OFF });
   const key = datasetId === null || !probe ? "" : `${datasetId}|${probe.x}|${probe.y}|${frame}`;
   useEffect(() => {
+    // `key` names every input
     if (!key || datasetId === null || !probe) return;
     const ac = new AbortController();
     const t = setTimeout(() => {
@@ -152,7 +154,7 @@ export function useSkyCursor(datasetId: number | null, probe: { x: number; y: nu
       clearTimeout(t);
       ac.abort();
     };
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- `key` names every input
+  }, [key]);
   if (!key) return OFF;
   return cur.key === key ? cur.c : { state: "loading" };
 }

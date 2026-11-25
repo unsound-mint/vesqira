@@ -106,7 +106,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const subs = useSubsets();
   const access = useAccess();
   const [subsetId, setSubsetId] = useState<number | null>(null); // a virtual subset is open in the main area instead of a dataset (ADR 0063)
-  useEffect(() => { void subs.refresh(); }, [cat.allDatasets]); // eslint-disable-line react-hooks/exhaustive-deps -- a changed file makes its subsets stale
+  useEffect(() => { void subs.refresh(); }, [cat.allDatasets]); // a changed file makes its subsets stale
   const hostOffer = useSyncExternalStore(subscribeHostOffer, getHostOffer); // a file-manager mount of an unregistered host (ADR 0031)
   const rendererNote = useSyncExternalStore(subscribeRendererNote, getRendererNote); // set only when drawing fell back to the CPU
   const { refreshDatasets, refreshRuns } = cat;
@@ -183,7 +183,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     const l = sceneLink(group, { a: idA, b: idB });
     viewerA.dispatch({ type: "setLink", link: l });
     viewerB.dispatch({ type: "setLink", link: l });
-  }, [linkKey, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [linkKey, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]);
   // where the hovered pixel of one pane is in the other: the same pixel on one grid, the worker's transform otherwise
   const [outsideIn, setOutsideIn] = useState<PaneId | null>(null);
   function mirror(from: PaneId, p: Pixel | null) {
@@ -250,11 +250,11 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     }
   }, [shared, compareDs, shareReason]);
   useEffect(() => {
-    // a limit changed on the map being worked in becomes the shared one
+    // a limit changed on the map being worked in becomes the shared one; sharedLimits is read only to skip a no-op write
     if (!shared) return;
     const c = viewer.customLimits;
     if (viewer.range === "custom" && c && (!sharedLimits || c[0] !== sharedLimits[0] || c[1] !== sharedLimits[1])) setSharedLimits([c[0], c[1]]);
-  }, [shared, viewer.customLimits, viewer.range]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shared, viewer.customLimits, viewer.range]);
   useEffect(() => {
     if (!shared || !sharedLimits) return;
     for (const v of [viewerA, viewerB]) {
@@ -262,12 +262,12 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
         v.dispatchFact({ type: "setDisplay", display: { limits: sharedLimits, range: "custom" } }); // follows the shared scale, not a command
       }
     }
-  }, [shared, sharedLimits, viewerA.range, viewerA.customLimits, viewerB.range, viewerB.customLimits]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shared, sharedLimits, viewerA.range, viewerA.customLimits, viewerB.range, viewerB.customLimits]);
 
   // both scenes say their colour scale is shared, also after a pane opens another dataset (which starts a new scene)
   useEffect(() => {
     for (const v of [viewerA, viewerB]) v.setScaleGroup(shared ? "compare" : null);
-  }, [shared, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shared, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]);
 
   // Is the other map known to share this one's grid? Only then are cursor and channel linked.
   useEffect(() => {
@@ -283,9 +283,10 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     return () => {
       live = false;
     };
-  }, [shownImage?.id, compareDs?.id, shownImage?.modifiedAt, compareDs?.modifiedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shownImage?.id, compareDs?.id, shownImage?.modifiedAt, compareDs?.modifiedAt]);
   const collapsedForCompare = useRef(false);
   useEffect(() => {
+    // runs when a comparison opens or closes, not when the explorer is toggled by hand
     if (!compareDs) {
       setActive("a");
       if (collapsedForCompare.current) toggle("sideOpen"); // give the explorer back when the comparison ends
@@ -294,10 +295,10 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
       collapsedForCompare.current = true; // two maps need the width
       toggle("sideOpen");
     }
-  }, [compareDs?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [compareDs?.id]);
   useEffect(() => {
     if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null), setOutsideIn(null);
-  }, [linked, group?.facets.cursor, group?.basis]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [linked, group?.facets.cursor, group?.basis]);
   const [focusJob, setFocusJob] = useState<number | null>(null);
   const [familyPreset, setFamilyPreset] = useState<FamilyPreset | null>(null);
   const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "runs" | "run" | "rerun" | "open" | "look" | "needs" | "health" | "import" | "family">("viewer");
@@ -367,7 +368,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const narrowNow = () => typeof matchMedia === "function" && matchMedia("(width <= 800px)").matches;
   useEffect(() => {
     if (narrowNow()) set("sideOpen", false);
-  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode]);
   useEffect(() => {
     if (typeof matchMedia !== "function") return;
     const q = matchMedia("(width <= 800px)");
@@ -375,7 +376,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     const onChange = () => { if (q.matches) { set("sideOpen", false); set("inspOpen", false); } };
     q.addEventListener("change", onChange);
     return () => q.removeEventListener("change", onChange);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   const openSubset = (id: number) => {
     setSubsetId(id);
     cat.select(null);
