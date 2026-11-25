@@ -32,7 +32,6 @@ export function SweepForm({ jobs, templates, baseJobId, onCreated }: { jobs: Job
   useEffect(() => {
     if (KEYS.length === 0) return;
     setRows((cur) => (cur.every((r) => KEYS.some((k) => k.key === r.key)) ? cur : cur.map((r) => (KEYS.some((k) => k.key === r.key) ? r : { ...r, key: firstKey }))));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [template, templates]);
 
   const request = (): SweepRequest => ({

@@ -71,7 +71,7 @@ export function SkyPanel({ datasets, subsets, datasetId, probe, onOpen }: {
     const one = !fitAll ? list.find((i) => i.id === datasetId)?.outline : null;
     return fitView(one ? [one.polygon] : list.flatMap((i) => (i.outline ? [i.outline.polygon] : [])));
   };
-  const fitted = useMemo(() => fitFor(items), [items, datasetId, fitAll]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fitted = useMemo(() => fitFor(items), [items, datasetId, fitAll]);
   const viewKey = `${frame}|${datasetId}|${fitAll}|${nonce}`;
   const view = (custom && custom.key === viewKey ? custom.v : null) ?? fitted;
   const move = (f: (v: View) => View) => view && setCustom({ key: viewKey, v: f(view) });

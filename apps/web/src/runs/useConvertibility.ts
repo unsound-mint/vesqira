@@ -26,7 +26,7 @@ export function useConvertibility(offers: Pair[]): (o: Pair) => Convertibility {
   const wanted = useMemo(() => [...new Set(offers.map((o) => keyOf(o.unit, o.to)))].sort(), [offers]);
   const wantedKey = wanted.join("\u0001");
   // pairs whose request failed: not remembered across plots, so the next plot asks again
-  const failed = useMemo(() => new Set<string>(), [wantedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const failed = useMemo(() => new Set<string>(), [wantedKey]);
 
   useEffect(() => {
     let alive = true;
@@ -43,7 +43,7 @@ export function useConvertibility(offers: Pair[]): (o: Pair) => Convertibility {
     }
     for (const p of new Set(wanted.flatMap((k) => (asking.has(k) ? [asking.get(k)!] : [])))) void p.then(() => { if (alive) bump(); });
     return () => { alive = false; };
-  }, [wantedKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wantedKey]);
 
   return (o) => {
     const k = keyOf(o.unit, o.to);

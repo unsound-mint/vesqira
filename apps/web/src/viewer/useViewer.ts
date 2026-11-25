@@ -166,7 +166,7 @@ export function useViewer(dataset: Dataset | null) {
       .then(setView)
       .catch((e: unknown) => !isAbort(e) && setViewError(message(e, "Could not read the dataset layout.")));
     return () => ac.abort();
-  }, [datasetId, retry, fileTime]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, retry, fileTime]);
 
   // Declaring or withdrawing a unit, or a correction, changes what every head says. Read the layout again (the plane and the spectrum follow the
   // new view) without starting over: the channel and the region stay. A different dataset starts over by itself, above.
@@ -277,7 +277,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, probe?.x, probe?.y, shownChannel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, probe?.x, probe?.y, shownChannel]);
 
   // What the file allows (spectral units, sky frames, brightness units) is read again whenever the layout is: a declared unit changes it.
   useEffect(() => {
@@ -337,7 +337,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, convKey, convWanted]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, convKey, convWanted]);
 
   // The mean spectrum of the region, from the worker. A newer region aborts the older request.
   useEffect(() => {
@@ -369,7 +369,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, view, region, maskKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, view, region, maskKey]);
 
   // The paired reliability map (one plane), for readouts and line opacity.
   useEffect(() => {
@@ -406,7 +406,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, view, interp?.kind, unit, relId, region]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, view, interp?.kind, unit, relId, region]);
 
   const channels = view?.channels ?? 0;
   const onChannelKey = useCallback(

@@ -38,7 +38,7 @@ export function MaskOverlay({ list, channel, width, height, cell }: { list: Mask
       .then((got) => { if (!ac.signal.aborted) setPlanes(Object.fromEntries(got)); })
       .catch((e: unknown) => { if (!ac.signal.aborted) setProblem(e instanceof Error ? e.message : "A mask could not be read."); });
     return () => ac.abort();
-  }, [key, channel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key, channel]);
   const drawn = useMemo(
     () => list.flatMap((m) => {
       const p = planes[m.id];

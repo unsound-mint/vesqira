@@ -26,7 +26,7 @@ export function useMaskedHistogram(datasetId: number | null, channel: number, re
         });
     }, 120);
     return () => { clearTimeout(t); ac.abort(); };
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key]);
   if (key === null) return null;
   return got && got.key === key ? { result: got.result, error: got.error } : { result: null, error: null };
 }

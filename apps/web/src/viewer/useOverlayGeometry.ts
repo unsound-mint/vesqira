@@ -67,7 +67,7 @@ export function useOverlayGeometry(scene: Scene | null, scale: number): Geometry
       retries.forEach(clearTimeout);
       ac.abort();
     };
-  }, [signature, baseId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [signature, baseId]);
 
   return map;
 }

@@ -142,7 +142,7 @@ export const RunsPlot = forwardRef<SVGSVGElement, PlotProps>(function RunsPlot({
       items.push({ key: "decl", width: 270, node: (x, y) => (<text x={x} y={y} fontSize={11.5} fontFamily={FONT} fill="var(--text-2)">filled: every result is stated by its run</text>) });
     }
     return items;
-  }, [model, hasCategories]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [model, hasCategories]);
 
   const legendTop = model.panels.length * panelOf(model) + 8;
   const rows = legendRows(legend, legendTop + 12);

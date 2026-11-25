@@ -43,14 +43,14 @@ export function useSkyLink(enabled: boolean, from: number | null, to: number | n
   const [kept, setKept] = useState<Region | null>(null);
   const pair = `${from}>${to}|${stamp}`;
   const view = scene?.view;
-  const win = useMemo(() => (view && image ? visibleRegion(view, image, pane) : null), [view?.zoom, view?.centre?.x, view?.centre?.y, image?.w, image?.h, pane?.w, pane?.h]); // eslint-disable-line react-hooks/exhaustive-deps
+  const win = useMemo(() => (view && image ? visibleRegion(view, image, pane) : null), [view?.zoom, view?.centre?.x, view?.centre?.y, image?.w, image?.h, pane?.w, pane?.h]);
   useEffect(() => {
     setKept(null);
   }, [pair]);
   useEffect(() => {
     if (!enabled || !win) return;
     setKept((k) => regionToAsk(k, win));
-  }, [enabled, win?.x0, win?.x1, win?.y0, win?.y1, pair]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, win?.x0, win?.x1, win?.y0, win?.y1, pair]);
   useEffect(() => {
     if (!enabled || from === null || to === null || !kept) return;
     const ac = new AbortController();
@@ -65,7 +65,7 @@ export function useSkyLink(enabled: boolean, from: number | null, to: number | n
       clearTimeout(t);
       ac.abort();
     };
-  }, [enabled, from, to, kept?.x0, kept?.x1, kept?.y0, kept?.y1, pair]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, from, to, kept?.x0, kept?.x1, kept?.y0, kept?.y1, pair]);
   if (!enabled) return IDLE_SKY;
   if (state.key !== pair) return { status: "loading" };
   return state.s;

@@ -68,7 +68,7 @@ function Panel({ panel, plan, datasetId, shared, cached, onLoaded, colormap, str
       })
       .catch((e: unknown) => !isAbort(e) && setError(e instanceof ApiError ? e.message : "This panel could not be read."));
     return () => ac.abort(); // a panel that scrolled away, or a plan that changed, stops its read
-  }, [want, data, datasetId, panel, plan.step]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [want, data, datasetId, panel, plan.step]);
 
   useEffect(() => {
     const c = canvas.current;
@@ -78,7 +78,7 @@ function Panel({ panel, plan, datasetId, shared, cached, onLoaded, colormap, str
     c.height = plane.head.height;
     c.getContext("2d")?.putImageData(new ImageData(paintPixels(plane.data, plane.head.width, plane.head.height, shared, lut(colormap), stretch, NODATA) as Uint8ClampedArray<ArrayBuffer>, plane.head.width, plane.head.height), 0, 0);
     onLoaded(panel.index, data, c);
-  }, [data, shared?.lo, shared?.hi, colormap, stretch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, shared?.lo, shared?.hi, colormap, stretch]);
 
   const none = data && data.plane.head.stats.finite_count === 0;
   return (
@@ -136,7 +136,7 @@ export function ChannelGrid({ v, dataset }: { v: Viewer; dataset: Dataset }) {
       setUnit(v.conv.spectral);
       setConvention(v.conv.convention || "radio");
     }
-  }, [dataset.id, v.offers]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dataset.id, v.offers]);
 
   const nums = { first: Number(first), last: Number(last), stride: Number(stride), average: Number(average) };
   const bad = [nums.first, nums.last, nums.stride, nums.average].some((n) => !Number.isInteger(n)) || nums.first < 1 || nums.last < nums.first || nums.last > channels || nums.stride < 1 || nums.average < 1 || nums.average > nums.stride
@@ -164,7 +164,7 @@ export function ChannelGrid({ v, dataset }: { v: Viewer; dataset: Dataset }) {
         .finally(() => setPlanning(false));
     }, 200);
     return () => { clearTimeout(t); ac.abort(); setPlanning(false); };
-  }, [dataset.id, nums.first, nums.last, nums.stride, nums.average, unit, convention, needsConvention, limits, channels, bad]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dataset.id, nums.first, nums.last, nums.stride, nums.average, unit, convention, needsConvention, limits, channels, bad]);
 
   const lo = plan?.scale.lo ?? null, hi = plan?.scale.hi ?? null;
   const shared = lo !== null && hi !== null ? { lo, hi } : null;

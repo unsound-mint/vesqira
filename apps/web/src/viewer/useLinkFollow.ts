@@ -79,5 +79,5 @@ export function useLinkFollow(group: LinkGroup | null, v: Panes, active: PaneId,
       if (driver) drive(driver, facet);
       else if (facet === "view" && cur.sky[led.current] !== prev.sky[led.current]) drive(led.current, facet);
     }
-  }, [key, cha, chb, viewA, viewB, active, skyMap.ab, skyMap.ba, chanMap.ab, chanMap.ba]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key, cha, chb, viewA, viewB, active, skyMap.ab, skyMap.ba, chanMap.ab, chanMap.ba]);
 }

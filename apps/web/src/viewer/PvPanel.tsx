@@ -57,7 +57,7 @@ function PvPlot({ d, v }: { d: PvDiagram; v: Viewer }) {
     for (let r = 0; r < nc; r++) rows.set(d.values.subarray((flip ? r : nc - 1 - r) * no, (flip ? r : nc - 1 - r) * no + no), (nc - 1 - r) * no);
     const px = paintPixels(rows, no, nc, scale, lut(v.colormap), v.stretch, NODATA);
     c.getContext("2d")?.putImageData(new ImageData(px as Uint8ClampedArray<ArrayBuffer>, no, nc), 0, 0);
-  }, [d, scale?.lo, scale?.hi, v.colormap, v.stretch, flip]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [d, scale?.lo, scale?.hi, v.colormap, v.stretch, flip]);
 
   function pick(e: MouseEvent<HTMLDivElement>) {
     const r = e.currentTarget.getBoundingClientRect();
@@ -155,7 +155,7 @@ export function PvPanel({ v }: { v: Viewer }) {
       setWidth(String(path.width));
       setWidthUnit(path.widthUnit);
     }
-  }, [path?.points, path?.width, path?.widthUnit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [path?.points, path?.width, path?.widthUnit]);
   useEffect(() => {
     setLast(channels > 0 ? String(channels) : "");
     setFirst("1");
