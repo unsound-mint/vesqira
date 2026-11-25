@@ -1,29 +1,16 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Access labels (ADR 0069) in the real app: label a dataset, make a figure and see it carry the label on the board, publishing asks
 // for a confirmation that names the dataset, the reviewer's page states the label and is given no list of labelled sources, and the
-// label is set back at the end. The file name stays in a figure's provenance, as it always did; the label adds no name. Runs last (the name): it labels a dataset of the shared instance and restores it.
+// file name stays in a figure's provenance, as it always did; the label adds no name.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");
 const inspector = (page: Page) => page.getByRole("complementary", { name: "Inspector" });
-
-// Clears every access label on the shared instance through the API: before the test, so a failed earlier attempt cannot leave a
-// second labelled dataset behind, and after it, so later specs publish without a question. Housekeeping, not the flow under test.
-async function clearLabels(page: Page) {
-  const r = await page.request.get("/api/access");
-  expect(r.ok()).toBeTruthy();
-  const { datasets } = (await r.json()) as { datasets: Record<string, { own: string }> };
-  for (const [id, row] of Object.entries(datasets)) {
-    if (row.own === "none") continue;
-    const set = await page.request.post(`/api/datasets/${id}/access`, { data: { label: "none", reason: "end-to-end test cleanup" } });
-    expect(set.ok()).toBeTruthy();
-  }
-}
 
 async function expectNoAxeViolations(page: Page, skip: string[] = []) {
   const r = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).disableRules(skip).analyze();
@@ -32,7 +19,6 @@ async function expectNoAxeViolations(page: Page, skip: string[] = []) {
 
 test("a labelled dataset marks its figure, publishing asks for confirmation, and the reviewer is told the label", async ({ page, browser }) => {
   await page.goto("/");
-  await clearLabels(page);
   const file = "hi_cube.fits";
   const row = page.getByRole("button", { name: new RegExp(`^${file.replace(".", "\\.")}`) }).first();
   if (!(await row.count())) {
@@ -101,7 +87,4 @@ test("a labelled dataset marks its figure, publishing asks for confirmation, and
   await page.screenshot({ path: test.info().outputPath("board-390.png") });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ colorScheme: "light" });
-
-  // put the label back so later runs of the suite publish without a question
-  await clearLabels(page);
 });

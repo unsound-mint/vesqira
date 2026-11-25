@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +8,7 @@ import { fileURLToPath } from "node:url";
 // Point catalogs (ADR 0044): register a table of sources, read its rows, declare which columns are the sky position and
 // what the angle is, and read how the declaration treats every row. The table is a small starlight-polarization file in the
 // shape of the real ones (tab separated, a commented header, h m s and d m s positions, trailing empty fields) with one
-// position that cannot be read. Runs after the other specs (the name) because it adds a dataset to the shared instance.
+// position that cannot be read.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");

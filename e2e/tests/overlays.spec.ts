@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
@@ -9,7 +9,7 @@ import { API } from "../ports";
 // Overlays from other datasets on a base map (ADR 0042, section 3), through the real API, worker and built app, on the
 // generated fixtures: contours of a rotated copy of the cube at k x sigma, a Galactic-frame cube elsewhere on the sky
 // (refused: no overlap), the base's beam and a Galactic grid, orientation lines of a declared map, then a figure that
-// stores them. Named y- so it runs after the walk-through, which counts figures from 1.
+// stores them.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");

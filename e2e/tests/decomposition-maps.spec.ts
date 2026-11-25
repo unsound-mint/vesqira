@@ -1,11 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // A decomposition written by a tool that is neither VGT nor ROHSA (ADR 0068, slice 4): its components are FITS maps and a test-only
-// profile (services/api/internal/runs/testdata/synthetic_maps_profile.json, loaded by e2e/start-api.sh) declares how to read them.
+// profile (services/api/internal/runs/testdata/synthetic_maps_profile.json, loaded by fixtures.ts) declares how to read them.
 // The fixture is closed form (fixtures/generate.py decomp_truth), 7 x 5 pixels, three slots per pixel, the third not fitted where
 // (x + y) % 4 == 0. At pixel (x=3, y=2): amplitudes 2.4, 2.9, 3.4 K; centres -9.6, -0.6, 8.4 km/s; FWHM 3.1, 5.1, 7.1 km/s, so sigma
 // 1.316, 2.166, 3.015 km/s (FWHM / 2.3548). At (x=1, y=3) the third slot is absent.

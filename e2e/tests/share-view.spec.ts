@@ -1,12 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // "Share this view" (ADR 0071): from the viewer, one click opens the dialog and one makes the link, which is copied. A fresh browser
 // context (a supervisor with no session) opens it and sees the frozen picture and its provenance, can reach no data endpoint, and
-// the link is dead once the author revokes it from the list of shared figures. Runs after the access spec (the name) so no label is left on the dataset.
+// the link is dead once the author revokes it from the list of shared figures.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");

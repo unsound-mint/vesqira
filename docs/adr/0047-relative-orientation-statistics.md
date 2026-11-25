@@ -193,7 +193,7 @@ A map-against-map comparison takes an optional `stratifyId`: a scalar map on the
   - Refusals: an undeclared frame or quantity, an unspecified quantity, a catalog angle that is missing or unspecified, different grids, a minimum shift that is too long, and parameters out of range.
 - **Go** (`relorient_test.go`, real worker): refusals in order (undeclared, unspecified, no catalog declaration, no angle, bad parameters, a shift too long for the fixture), then a catalog result and a map result. The test checks the registered kind, the derived record and its sources, the CSV download and its rows, and that request and response conform to the OpenAPI spec.
 - **Web** (`relorient.test.tsx`): readiness messages, candidates, the request with its seed, refusal reasons shown, result numbers and figures, the absence of success wording, V without a p-value, and the section shown only for results.
-- **e2e** (`zzz-relorient.spec.ts`): from the map's inspector to a result with AM > 0.99, the figures, the CSV, and axe scans.
+- **e2e** (`relorient.spec.ts`): from the map's inspector to a result with AM > 0.99, the figures, the CSV, and axe scans.
 - **Looked at, not reviewed:** a 1440 × 900 dark screenshot of the result. Not done: the other viewports and themes, keyboard-only use beyond the axe scan, and owner review of the numbers on real data.
 
 ## Rollback / Migration

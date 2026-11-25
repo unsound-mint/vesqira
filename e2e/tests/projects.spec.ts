@@ -1,14 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Projects (ADR 0030): open a folder, see what was found, write the layout only on confirmation, answer what cannot be
-// known, and open a file from the explorer. The folder is made by start-api.sh outside the readable roots, so opening it
+// known, and open a file from the explorer. The folder is made by prepare.sh outside the readable roots, so opening it
 // is what grants access.
-//
-// The file name sorts last on purpose: opening a project registers its FITS headers into the catalog the other specs share.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FOLDER = path.resolve(here, "../.run/project/hi-vgt-study");
 const PROJECT_FILE = path.join(FOLDER, ".vesqira", "project.toml");

@@ -34,7 +34,7 @@ ADR 0042 made every change to a viewer pane's scene one serialisable action of a
 ## Validation
 - `sceneCommands.test.ts`: exact undo and redo over 60 seeded random sequences of 40 commands, the name table, coalescing, bounds, facts and the preserved mirrors. `boardCommands.test.ts` (inverse API calls in order, conflicts send nothing, partial undo reported) and `boardUndo.test.tsx` (the board screen: buttons, Ctrl and Cmd shortcuts, text fields left alone, conflict message, no undo for publishing). `keys.test.tsx`.
 - `recorder.test.ts`, `history.test.tsx` (debounce, branch parents, persistence across a reload as stored steps, continue refusal). Go: `internal/history` (tree, project isolation, pruning, input checks), `internal/server/history_test.go` (routes, validation, lifecycle delete and impact), migration test, schema snapshot v19, reviewer test.
-- Browser acceptance in `e2e/tests/zzzz-undo-history.spec.ts`: draw a region and move a panel, undo both, redo; continue from an earlier history step.
+- Browser acceptance in `e2e/tests/undo-history.spec.ts`: draw a region and move a panel, undo both, redo; continue from an earlier history step.
 - Guard: `boards/expect_test.go` (matching, mismatched, gone, wrong kind or note leave the board unchanged; eight concurrent guarded removes apply once), `server/boards_expect_test.go` (the routes: 409 with the current board and no change, match applied, no `expect` still works, empty remove body, 404 vs 409 for an unknown position), `boardCommands.test.ts` and `boardUndo.test.tsx` (undo sends `expect`, a server refusal is a conflict).
 - Not verified: two real browser windows editing one board at the same moment (the race is covered at the store and route level), and the visual design of the new controls.
 

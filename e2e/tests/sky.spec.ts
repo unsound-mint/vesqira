@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,16 +7,16 @@ import { API, REVIEW } from "../ports";
 
 // The sky panel (ADR 0072) through the real API, worker and built app, with the survey background OFF, which is its default. The
 // run has no external network by design: every request that leaves this machine is blocked and counted, and none may be attempted
-// while the background is off. Runs late (the name): it adds datasets to the shared instance.
+// while the background is off.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");
-const shots = path.resolve(here, "../.run");
+const shots = path.resolve(here, "../test-results");
 
 type Ds = { id: number; name: string };
 const FILES = ["hi_cube.fits", "hi_cube_galactic.fits", "hi_cube_no_celestial_wcs.fits", "hi_cube_coarser.fits"];
 
-/** Registers a file, or finds the dataset that already holds it (other specs register the same fixtures). */
+/** Registers a file, or finds the dataset that already holds it (an earlier test of this file registered the same fixtures). */
 async function ensure(request: import("@playwright/test").APIRequestContext, file: string): Promise<Ds> {
   const find = async () => ((await (await request.get(`${API}/api/datasets`)).json()) as { datasets: Ds[] }).datasets.find((d) => d.name === file);
   const known = await find();
@@ -28,7 +28,7 @@ async function ensure(request: import("@playwright/test").APIRequestContext, fil
   return d!;
 }
 
-/** A dataset's outline on the sky map, by id: other specs register files with the same name. */
+/** A dataset's outline on the sky map, by id: the same file name can be registered twice. */
 const outline = (panel: import("@playwright/test").Locator, d: Ds) => panel.locator(`[role="button"][data-dataset-id="${d.id}"]`);
 
 /** Everything that is not this machine is refused and written down. */

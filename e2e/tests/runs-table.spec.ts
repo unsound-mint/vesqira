@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 // The runs table and the cross-run plot (ADR 0062) through the real API and the built app: six sweep runs written here (block
 // size and gradient method varied; one records no result, one records it in another unit), then filter, columns, sort, the
 // plot, selection both ways, a saved view that survives a reload, and the CSV, SVG and PNG exports with their provenance.
-// The file name sorts last: it imports runs into the catalog the other specs share.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const data = path.resolve(here, "../.run/data");
@@ -48,8 +47,8 @@ async function expectNoAxeViolations(page: Page) {
 async function shot(page: Page, name: string, width: number, height: number) {
   const size = page.viewportSize() ?? { width: 1440, height: 900 };
   await page.setViewportSize({ width, height });
-  fs.mkdirSync(path.resolve(here, "../.run/shots"), { recursive: true });
-  await page.screenshot({ path: path.resolve(here, `../.run/shots/${name}.png`) });
+  fs.mkdirSync(path.resolve(here, "../test-results/shots"), { recursive: true });
+  await page.screenshot({ path: path.resolve(here, `../test-results/shots/${name}.png`) });
   await page.setViewportSize(size);
 }
 

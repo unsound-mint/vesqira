@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,8 +8,7 @@ import { fileURLToPath } from "node:url";
 // Generic import (ADR 0058): scan a folder, read what the built-in rules recognise and why, write a rule with a live preview of
 // what it matches, save it, register what it selects, and write it to project.toml only on a second confirmation.
 //
-// The folder is made here, outside the readable roots, so opening it is what grants access. The file name sorts last because
-// opening a project registers its FITS headers into the catalog the other specs share.
+// The folder is made here, outside the readable roots, so opening it is what grants access.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FOLDER = path.resolve(here, "../.run/import-e2e");
 const PROJECT_FILE = path.join(FOLDER, ".vesqira", "project.toml");
@@ -29,12 +29,12 @@ function put(rel: string, content: Buffer | string) {
   fs.writeFileSync(p, content);
 }
 
-/** A tall viewport shot of the page (the page scrolls inside the canvas), for reading the rendered screen; kept under .run. */
+/** A tall viewport shot of the page (the page scrolls inside the canvas), for reading the rendered screen; kept under test-results. */
 async function shot(page: Page, name: string, width: number, height: number) {
   const size = page.viewportSize() ?? { width: 1440, height: 900 };
   await page.setViewportSize({ width, height });
-  fs.mkdirSync(path.resolve(here, "../.run/shots"), { recursive: true });
-  await page.screenshot({ path: path.resolve(here, `../.run/shots/${name}.png`) });
+  fs.mkdirSync(path.resolve(here, "../test-results/shots"), { recursive: true });
+  await page.screenshot({ path: path.resolve(here, `../test-results/shots/${name}.png`) });
   await page.setViewportSize(size);
 }
 

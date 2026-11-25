@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 
 // ADR 0034: the GPU renderer must draw what the CPU renderer draws. "No value" pixels must be identical (they are
 // decided from the bits, never from a colormap entry); colormap indices may differ by one at most, because the CPU path
