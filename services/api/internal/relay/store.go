@@ -213,6 +213,7 @@ func scanRow(row interface{ Scan(...any) error }) (Row, error) {
 	if err != nil {
 		return r, err
 	}
+	// these columns are written with json.Marshal; an unreadable one reads as empty and the defaults below fill it
 	_ = json.Unmarshal([]byte(params), &r.Ask.Params)
 	_ = json.Unmarshal([]byte(res), &r.Ask.Resources)
 	_ = json.Unmarshal([]byte(grid), &r.Ask.Grid)

@@ -54,6 +54,7 @@ func (s *Server) familyMapOf(ws workspace.ID, rec derived.Record) (familyMapView
 		Run         string `json:"run"`
 		ReferenceID int64  `json:"referenceId"`
 	}
+	// an unreadable record is read like one made before runs were named, below
 	_ = json.Unmarshal(rec.Params, &p)
 	run := p.Run
 	if run == "" { // a result made before runs were named: its maps share the moment they were made and their reference

@@ -249,6 +249,7 @@ func (s *Server) recordCarried(reqCtx context.Context, p *carryPlan, summary jso
 		sentence := fmt.Sprintf("carried from mask \"%s\" of %s by %s", c.mask.Name, src.Name, by)
 		var orig any
 		if len(c.mask.Rule) > 0 {
+			// an unreadable rule is carried as null
 			_ = json.Unmarshal(c.mask.Rule, &orig)
 		}
 		rule, _ := json.Marshal(map[string]any{

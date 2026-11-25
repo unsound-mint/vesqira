@@ -279,6 +279,7 @@ func fileStatedUnit(d catalog.Dataset) (string, bool) {
 	var h struct {
 		Bunit *string `json:"bunit"`
 	}
+	// the header is the worker's report as stored; an unreadable one states no unit
 	_ = json.Unmarshal(d.Header, &h)
 	if h.Bunit == nil {
 		return "", false

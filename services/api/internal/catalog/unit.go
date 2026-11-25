@@ -76,6 +76,7 @@ func fileStatesItsUnit(d Dataset) bool {
 		Status string  `json:"bunit_status"`
 		Bunit  *string `json:"bunit"`
 	}
+	// the header is the worker's report as stored; an unreadable one states no unit, and a person's declaration may then be taken
 	_ = json.Unmarshal(d.Header, &h)
 	return h.Status == "declared" || h.Bunit != nil
 }

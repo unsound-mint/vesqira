@@ -169,7 +169,9 @@ func (s *Server) finishAxialResult(ws workspace.ID, res analysisOutcome, nd cata
 		Axial           bool `json:"axial"`
 		ReliabilityFile bool `json:"reliability_file"`
 	}
-	_ = json.Unmarshal(res.Summary, &sum)
+	if err := json.Unmarshal(res.Summary, &sum); err != nil && len(res.Summary) > 0 {
+		log.Printf("analysis: the summary of %s cannot be read, so its result is not declared axial: %v", nd.Name, err)
+	}
 	if !sum.Axial || a == nil {
 		return nd
 	}

@@ -149,6 +149,7 @@ func (s *Server) skyFootprintFor(r *http.Request, ref skyRef, frame string) (sky
 		var e struct {
 			Error string `json:"error"`
 		}
+		// an error body that is not JSON gets the generic message below
 		_ = json.Unmarshal([]byte(cw.buf.String()), &e)
 		if e.Error == "" {
 			e.Error = "could not be read"

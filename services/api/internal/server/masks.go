@@ -740,6 +740,7 @@ func masksTiers(der *derived.Summary) []safeTier {
 		var rule struct {
 			Rule string `json:"rule"`
 		}
+		// an unreadable rule has no sentence to quote
 		_ = json.Unmarshal(m.Rule, &rule)
 		note := "pixels flagged " + masks.TypeLabel(m.Type) + " were " + how + " in this result"
 		if rule.Rule != "" {

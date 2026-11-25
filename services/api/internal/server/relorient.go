@@ -470,6 +470,7 @@ func (s *Server) relativeOrientationTable(w http.ResponseWriter, r *http.Request
 			Reason *string `json:"reason"`
 		} `json:"table"`
 	}
+	// an unreadable summary has no table, and the 404 below says so
 	_ = json.Unmarshal(rec.Summary, &sum)
 	if sum.Table.File == nil {
 		why := "this result has no table"

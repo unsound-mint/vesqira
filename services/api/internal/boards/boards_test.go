@@ -452,3 +452,23 @@ func TestOwnerSeesWhatIsNewSinceTheyLastLooked(t *testing.T) {
 		t.Errorf("an outcome after the last comment is newer activity: %v vs %v", got2[0].LastActivity, got[0].LastActivity)
 	}
 }
+
+func TestPreflightWarnsWhenProvenanceCannotBeRead(t *testing.T) {
+	s, _ := newStore(t)
+	b, _ := s.CreateBoard(workspace.Local, "local-owner", "one")
+	f, err := s.CreateFigure(workspace.Local, "local-owner", NewFigure{DatasetID: 7, Title: "Broken", Caption: "c", Provenance: json.RawMessage(`{"run":`)}, pngBytes(t, 8, 6, 3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.AddItem(workspace.Local, b.ID, f.ID)
+	pf, err := s.Preflight(workspace.Local, b.ID, "q", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range pf.Warnings {
+		if strings.Contains(w, "provenance") && strings.Contains(w, "cannot be read") {
+			return
+		}
+	}
+	t.Fatalf("a figure whose provenance cannot be parsed must be named in the preflight, not passed as clean: %v", pf.Warnings)
+}

@@ -100,6 +100,7 @@ func (s *Store) Get(datasetID int64) (Record, error) {
 		return Record{}, err
 	}
 	r.Params, r.Summary, r.Software = json.RawMessage(p), json.RawMessage(sum), CleanSoftware(json.RawMessage(sw))
+	// Save writes Sources with json.Marshal; an unreadable column reads as no sources
 	_ = json.Unmarshal([]byte(src), &r.Sources)
 	r.CreatedAt = time.Unix(at, 0).UTC()
 	return r, nil

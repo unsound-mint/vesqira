@@ -145,6 +145,7 @@ func (s *Server) windowedRead(w http.ResponseWriter, r *http.Request, src catalo
 // windowOf is the window a cache key carries, as the object the worker takes.
 func windowOf(win string) map[string]any {
 	var m map[string]any
+	// win is empty (no window) or JSON that windowedRead marshalled; either way a nil map means no window
 	_ = json.Unmarshal([]byte(win), &m)
 	return m
 }
@@ -483,6 +484,7 @@ func subsetSummary(rec derived.Record) subsetSummaryOf {
 		} `json:"subset"`
 		ReuseKey string `json:"reuseKey"`
 	}
+	// an unreadable summary names no subset, so no request reuses the file
 	_ = json.Unmarshal(rec.Summary, &sm)
 	return subsetSummaryOf{ID: sm.Subset.ID, Version: sm.Subset.Version, ReuseKey: sm.ReuseKey}
 }
@@ -638,7 +640,9 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	}
 	params, _ := json.Marshal(pm)
 	summary := map[string]any{}
-	_ = json.Unmarshal(res.Summary, &summary)
+	if err := json.Unmarshal(res.Summary, &summary); err != nil && len(res.Summary) > 0 {
+		log.Printf("subsets: the worker summary of %s cannot be read, so the record keeps only the subset keys: %v", nd.Name, err)
+	}
 	summary["subset"] = map[string]any{"id": sub.ID, "version": cur.Version}
 	summary["reuseKey"] = reuseKey(sub.ID, cur.Version, src, carry.key())
 	sraw, _ := json.Marshal(summary)
@@ -667,6 +671,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 func reviewerDefinition(d subsets.Definition) map[string]any {
 	raw, _ := json.Marshal(d)
 	var m map[string]any
+	// raw was just marshalled from a struct, so it is a valid JSON object
 	_ = json.Unmarshal(raw, &m)
 	if d.Region != nil {
 		m["region"] = map[string]any{"name": d.Region.Name}

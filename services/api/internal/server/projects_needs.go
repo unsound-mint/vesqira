@@ -66,6 +66,7 @@ func capPaths(ps []string) []string {
 
 func (s *Server) storedSummaryOf(p projects.Project) storedSummary {
 	var sum storedSummary
+	// a project not yet scanned has an empty summary and reads as zero
 	_ = json.Unmarshal(p.Summary, &sum)
 	return sum
 }
