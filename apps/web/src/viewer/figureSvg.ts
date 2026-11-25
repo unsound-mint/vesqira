@@ -36,6 +36,7 @@ export function withoutOwnerKeys(v: unknown): unknown {
   return v;
 }
 
+// eslint-disable-next-line no-control-regex -- the control characters are the point: XML 1.0 forbids exactly these
 const XML_BAD = /[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g;
 export const xmlEscape = (s: string) => s.replace(XML_BAD, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const n = (v: number) => String(Math.round(v * 1000) / 1000);

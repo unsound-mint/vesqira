@@ -126,7 +126,7 @@ describe("StepRecorder", () => {
 
   it("continue from here: the head moves to that step, a 'continued' step is its child and later steps branch from it", async () => {
     const { rec, sent, clk } = setup(7);
-    let s = fresh();
+    const s = fresh();
     rec.observe(s);
     await rec.idle(); // opened, child of 7 (101)
     const target = step(fresh(), { type: "setChannel", channel: 9 });

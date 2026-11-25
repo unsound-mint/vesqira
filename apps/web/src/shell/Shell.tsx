@@ -297,7 +297,11 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     }
   }, [compareDs?.id]);
   useEffect(() => {
-    if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null), setOutsideIn(null);
+    if (!links(group, "cursor")) {
+      viewerA.setMirror(null);
+      viewerB.setMirror(null);
+      setOutsideIn(null);
+    }
   }, [linked, group?.facets.cursor, group?.basis]);
   const [focusJob, setFocusJob] = useState<number | null>(null);
   const [familyPreset, setFamilyPreset] = useState<FamilyPreset | null>(null);

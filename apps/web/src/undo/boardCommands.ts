@@ -59,8 +59,8 @@ type Places = { items: BoardItem[]; before: (api.BoardRect | null)[] };
 
 /** Puts item back at pos: appended (the API only appends), then moved up to its place, then its note, then the board's grid layout restored. */
 async function reinsert(boardId: number, item: BoardItem, pos: number, note: string, length: number, places?: Places): Promise<void> {
-  let b = await expectLength(boardId, length);
-  b = item.kind === "job" ? await api.addJobToBoard(boardId, item.job.id) : await api.addToBoard(boardId, item.figure.id);
+  await expectLength(boardId, length);
+  const b = item.kind === "job" ? await api.addJobToBoard(boardId, item.job.id) : await api.addToBoard(boardId, item.figure.id);
   let at = b.items.length - 1;
   try {
     while (at > pos) {

@@ -107,7 +107,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
     if (!live || boardId === null) return;
     let stopped = false;
     const poll = () => getBoard(boardId).then((b) => { if (!stopped) replaceBoard(b); }).catch(() => undefined); // the next poll tries again
-    poll();
+    void poll();
     const t = setInterval(poll, 30_000);
     return () => { stopped = true; clearInterval(t); };
   }, [live, boardId, replaceBoard]);

@@ -75,7 +75,7 @@ export function ClassMapView({ title, unit, width, height, data, mask, pinned, o
         const at = y * width + x;
         const o = ((height - 1 - y) * width + x) * 4;
         const v = data[at]!;
-        let rgb: [number, number, number] | null = null;
+        let rgb: [number, number, number] | null;
         if (Number.isNaN(v)) rgb = null;
         else if (v > 0 && range) {
           const t = range.hi === range.lo ? 0.5 : (Math.log10(v) - range.lo) / (range.hi - range.lo);

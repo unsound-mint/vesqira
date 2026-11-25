@@ -104,7 +104,6 @@ for (const frame of ["icrs", "galactic"] as const) {
     await drag(page, bg, w / 4, 0);
     await panel.getByRole("button", { name: "Save as figure" }).click();
     const two = await savedAfter(request, seen);
-    seen = two.id;
     const moved = two.sky;
     const shift = Math.hypot(Math.abs(((moved.centre.lon - still.centre.lon + 540) % 360) - 180) * Math.cos((still.centre.lat * Math.PI) / 180), moved.centre.lat - still.centre.lat);
     expect(shift / still.fovDeg).toBeGreaterThan(0.15);

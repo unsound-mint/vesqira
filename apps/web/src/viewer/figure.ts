@@ -113,8 +113,7 @@ const COMPASS_REACH = COMPASS_LEN + COMPASS_HEAD * 1.75 + COMPASS_LETTER_PX / 2 
  * usually where the source is, and arrows there would cover it. The directions are the ones at the reference pixel (the caption
  * says "at the map centre"); a figure too small for the inset centres it.
  */
-export function compassLayout(c: FigureCompass, planeW: number, planeH: number, iw: number, ih: number) {
-  void c, planeW, planeH; // the anchor no longer depends on the reference pixel; the angles do
+export function compassLayout(c: FigureCompass, _planeW: number, _planeH: number, iw: number, ih: number) {
   const fits = iw >= 2 * COMPASS_REACH && ih >= 2 * COMPASS_REACH;
   return {
     at: fits ? { x: iw - COMPASS_REACH, y: COMPASS_REACH } : { x: iw / 2, y: ih / 2 },

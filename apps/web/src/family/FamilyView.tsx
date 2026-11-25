@@ -71,7 +71,7 @@ export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: D
   const channelOk = !anyCube || (Number.isInteger(chNum) && chNum >= 1);
   const shown = images.filter((d) => !filter.trim() || d.name.toLowerCase().includes(filter.trim().toLowerCase()));
 
-  function useCandidate(c: FamilyCandidate, withSource: boolean) {
+  function pickCandidate(c: FamilyCandidate, withSource: boolean) {
     const members = c.members.slice().sort((a, b) => (Number(a.value) - Number(b.value)) || a.value.localeCompare(b.value));
     const next = members.map((m) => m.datasetId);
     const lab: Record<number, string> = {};
@@ -124,8 +124,8 @@ export function FamilyView({ datasets, preset, onCatalogChanged }: { datasets: D
               return (
                 <li key={i}>
                   <span>{c.op === "smooth_spectral" ? "Spectral smoothings" : "Convolutions"} of <strong>{src}</strong> that differ in {c.varying} ({c.members.map((m) => m.value).join(", ")}){fixed ? `; the same ${fixed}` : ""}</span>
-                  <Button onClick={() => useCandidate(c, false)}>Use these</Button>
-                  {byId.has(c.sourceId) ? <Button onClick={() => useCandidate(c, true)}>Use these and the source</Button> : null}
+                  <Button onClick={() => pickCandidate(c, false)}>Use these</Button>
+                  {byId.has(c.sourceId) ? <Button onClick={() => pickCandidate(c, true)}>Use these and the source</Button> : null}
                 </li>
               );
             })}
@@ -195,7 +195,7 @@ export function FamilyResultView({ result, channel, names, axial, datasets }: { 
     const ac = new AbortController();
     setLoaded(null);
     setProblem(null);
-    (async () => {
+    void (async () => {
       try {
         const members = await Promise.all(result.datasetIds.map((id) => getPlane(id, (byIdNaxis(datasets.get(id))) >= 3 ? channel : 0, ac.signal).catch(() => null)));
         const diffs = new Map<number, Plane>();

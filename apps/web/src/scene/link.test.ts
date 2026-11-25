@@ -150,7 +150,7 @@ describe("what the link pill states", () => {
     expect(g.facets).toEqual({ cursor: true, channel: false, view: false });
     expect(links(g, "channel")).toBe(false);
     expect(links(g, "cursor")).toBe(true);
-    const idle = { status: "idle" as const, refused: null };
+    const idle = { status: "idle" as const };
     expect(linkPills(g, idle, idle)).toEqual([{ text: `Same grid: cursor linked; channel link refused: ${why}`, tone: "warn" }]);
     const both = linkGroup({ ...defaultPrefs(), facets: { cursor: true, channel: true, view: true } }, true, why)!;
     expect(linkPills(both, idle, idle)[0]!.text).toBe(`Same grid: cursor and view linked; channel link refused: ${why}`);

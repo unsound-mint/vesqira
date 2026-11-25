@@ -66,7 +66,6 @@ async function publishRound(page: Page, label: string): Promise<string> {
 const figure = (page: Page, title: string) => page.getByRole("article").filter({ has: page.getByRole("heading", { name: title, level: 2 }) });
 
 test("round 2 tells the reviewer what changed and carries round 1's comment", async ({ page, browser }) => {
-  let boardId = 0;
   const contexts: { close(): Promise<void> }[] = [];
   try {
     await page.goto("/");
@@ -89,7 +88,7 @@ test("round 2 tells the reviewer what changed and carries round 1's comment", as
 
     // the author edits A's caption, drops B and adds C (the API for the first two: they are single calls; C is saved from the viewer)
     const boards = (await (await page.request.get(`${API}/api/boards`)).json()) as { boards: { id: number; title: string }[] };
-    boardId = boards.boards.find((b) => b.title === BOARD)!.id;
+    const boardId = boards.boards.find((b) => b.title === BOARD)!.id;
     const figs = (await (await page.request.get(`${API}/api/figures`)).json()) as { figures: { id: number; title: string }[] };
     const a = figs.figures.find((f) => f.title === "Rounds A")!;
     expect((await page.request.post(`${API}/api/figures/${a.id}/text`, { data: { title: "Rounds A", caption: "Caption added for round 2" } })).ok()).toBe(true);
