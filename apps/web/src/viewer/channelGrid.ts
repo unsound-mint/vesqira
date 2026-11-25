@@ -4,7 +4,8 @@ import { lut as colorTable } from "./colormaps";
 import type { RampId } from "./colormaps";
 import { normalize } from "./render";
 import type { Stretch } from "./render";
-import { FIGURE_WIDTH, blobToBase64 } from "./figure";
+import { FIGURE_WIDTH, FONT, MONO, blobToBase64 } from "./figure";
+import { BG, INK, INK2 } from "../scene/palette";
 
 /** The hatching of a panel pixel with no value: fixed (not the theme's), so a grid looks the same in either theme and draws again the same. */
 export const GRID_NODATA: [[number, number, number], [number, number, number]] = [[27, 34, 44], [85, 98, 117]];
@@ -98,11 +99,8 @@ export function gridFigure(o: { datasetId: number; plan: ChannelGridPlan; first:
   return { spec, view };
 }
 
-const INK = "#e7ecf2";
-const INK2 = "#a7b3c1";
-const BG = "#0f151c";
-const FONT = "'Geist Variable', 'Geist', system-ui, sans-serif";
-const MONO = "'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace";
+const EMPTY_PANEL = "#1b232d"; // a panel with no image yet; not --nodata-a, which marks NaN pixels
+const LABEL_BACKING = "rgba(6,8,12,0.78)"; // --canvas at 78%, so a label reads over any colormap
 
 /** The grid as one PNG: title, panels with their labels, the shared colour bar with its limits, and the caption lines. */
 export async function composeGridFigure(o: {
@@ -152,10 +150,10 @@ export async function composeGridFigure(o: {
   o.panels.forEach((p, i) => {
     const x = pad + (i % cols) * (cw + gap), y = top + Math.floor(i / cols) * (ch + gap);
     if (p.source) ctx.drawImage(p.source, x, y, cw, ch);
-    else { ctx.fillStyle = "#1b232d"; ctx.fillRect(x, y, cw, ch); }
+    else { ctx.fillStyle = EMPTY_PANEL; ctx.fillRect(x, y, cw, ch); }
     ctx.font = `11px ${MONO}`;
     const tw = Math.min(cw - 4, ctx.measureText(p.label).width + 8);
-    ctx.fillStyle = "rgba(6,8,12,0.78)";
+    ctx.fillStyle = LABEL_BACKING;
     ctx.fillRect(x + 2, y + 2, tw, 16);
     ctx.fillStyle = INK;
     ctx.fillText(p.label.length > 60 ? `${p.label.slice(0, 59)}…` : p.label, x + 6, y + 14, cw - 12);

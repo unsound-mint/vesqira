@@ -3,6 +3,7 @@ import { spectralText } from "./format";
 import { axisDisplay, segments } from "./SpectrumPlot";
 import type { RegionShape } from "../api/planes";
 import { HALO, strokeMarks } from "../scene/overlays";
+import { BG, FRAME, INK, INK2, OVERLAY_COLORS } from "../scene/palette";
 import { compassShapes } from "../ui/compassGeometry";
 import type { FigureCompass } from "../ui/compassGeometry";
 import type { Mark } from "../scene/overlays";
@@ -44,9 +45,6 @@ export function captionLines(f: FigureFacts, view: View | null, plane: Plane | n
   return out;
 }
 
-export const INK = "#e7ecf2";
-export const INK2 = "#a7b3c1";
-export const BG = "#0f151c";
 export const FONT = "'Geist Variable', 'Geist', system-ui, sans-serif";
 export const MONO = "'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace";
 
@@ -312,9 +310,9 @@ export async function composeSpectrumFigure(o: { spectrum: Spectrum; title: stri
   const yhi = fin.length ? Math.max(...fin) : 1;
   const px = (x: number) => left + (xhi === xlo ? 0.5 : (x - xlo) / (xhi - xlo)) * pw;
   const py = (y: number) => top + ph - (yhi === ylo ? 0.5 : (y - ylo) / (yhi - ylo)) * ph;
-  ctx.strokeStyle = "#2f3d4c";
+  ctx.strokeStyle = FRAME;
   ctx.strokeRect(left, top, pw, ph);
-  ctx.strokeStyle = "#3cc4e8";
+  ctx.strokeStyle = OVERLAY_COLORS.cyan;
   ctx.lineWidth = 2;
   for (const seg of segments(xs.map(px), ys.map(py))) {
     ctx.beginPath();
@@ -325,7 +323,7 @@ export async function composeSpectrumFigure(o: { spectrum: Spectrum; title: stri
     });
     ctx.stroke();
   }
-  ctx.strokeStyle = "#f0b04c";
+  ctx.strokeStyle = OVERLAY_COLORS.amber;
   for (const f of o.flagged) {
     ctx.beginPath();
     ctx.moveTo(px(xs[f]!), top + ph);

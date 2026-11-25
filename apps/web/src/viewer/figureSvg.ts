@@ -1,10 +1,10 @@
-import { BG, canvasMeasure, COMPASS_LETTER_PX, COMPASS_MARKER_PX, compassLayout, FONT, INK, INK2, layoutImageFigure, MASK_ROW, MONO } from "./figure";
+import { canvasMeasure, COMPASS_LETTER_PX, COMPASS_MARKER_PX, compassLayout, FONT, layoutImageFigure, MASK_ROW, MONO } from "./figure";
 import type { ImageFigure, Measure } from "./figure";
 import { dashOf, FIGURE_STROKE, HALO, LABEL_PX } from "../scene/overlays";
 import { HATCH } from "./maskHatch";
 import type { MaskType } from "../api/masks";
 import type { Mark } from "../scene/overlays";
-import { OVERLAY_COLORS } from "../scene/palette";
+import { BG, INK, INK2, OVERLAY_COLORS } from "../scene/palette";
 
 /**
  * SVG export of a plane figure (ADR 0042, section 5). It is a second backend of the same drawing as the PNG: the layout is

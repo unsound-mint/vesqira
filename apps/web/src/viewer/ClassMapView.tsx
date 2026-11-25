@@ -3,6 +3,11 @@ import type { KeyboardEvent, MouseEvent } from "react";
 import { lut } from "./colormaps";
 import s from "./GaussianReview.module.css";
 
+// Marks drawn over the class colours (viridis in both themes), so they are fixed values and not theme tokens.
+const STRIPE_DARK = "rgba(0, 0, 0, 0.85)";
+const STRIPE_LIGHT = "rgba(255, 255, 255, 0.95)";
+const PIN_RED = "#ff3b30"; // viridis has no red, so the pin stands out on every class
+
 const num = (v: number) => String(Number(v.toPrecision(4)));
 
 /** The log10 range of the values above zero in a class map, or null when there are none. */
@@ -123,12 +128,12 @@ export function ClassMapView({ title, unit, width, height, data, mask, pinned, o
       g.save();
       g.clip(area);
       g.lineWidth = 3;
-      g.strokeStyle = "rgba(0, 0, 0, 0.85)";
+      g.strokeStyle = STRIPE_DARK;
       g.beginPath();
       for (let d = -box.h; d < box.w; d += 7) { g.moveTo(d, box.h); g.lineTo(d + box.h, 0); }
       g.stroke();
       g.lineWidth = 1.25;
-      g.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      g.strokeStyle = STRIPE_LIGHT;
       g.stroke();
       g.restore();
     }
@@ -137,10 +142,10 @@ export function ClassMapView({ title, unit, width, height, data, mask, pinned, o
       const cy = (height - 1 - pinned.y + 0.5) * sy;
       const r = Math.max(5, Math.min(sx, sy) / 2 + 2);
       g.lineWidth = 3.5;
-      g.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      g.strokeStyle = STRIPE_LIGHT;
       g.strokeRect(cx - r, cy - r, 2 * r, 2 * r);
       g.lineWidth = 1.75;
-      g.strokeStyle = "#ff3b30";
+      g.strokeStyle = PIN_RED;
       g.strokeRect(cx - r, cy - r, 2 * r, 2 * r);
     }
   }, [mask, pinned, box, width, height]);
