@@ -34,7 +34,14 @@ export default tseslint.config(
     rules: {
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
-      // The compiler rules (refs, set-state-in-effect, purity, preserve-manual-memoization, immutability, globals) are not enabled:
+      // These compiler rules report nothing today; they stay on so a regression fails the build.
+      "react-hooks/static-components": "error",
+      "react-hooks/use-memo": "error",
+      "react-hooks/void-use-memo": "error",
+      "react-hooks/error-boundaries": "error",
+      "react-hooks/set-state-in-render": "error",
+      "react-hooks/unsupported-syntax": "error",
+      // refs, set-state-in-effect, purity, preserve-manual-memoization, immutability and globals are not enabled:
       // plugin 7.1.1 reports about 170 sites for them and they have not been reviewed one by one.
       "@typescript-eslint/await-thenable": "error",
       "@typescript-eslint/no-floating-promises": "error",
