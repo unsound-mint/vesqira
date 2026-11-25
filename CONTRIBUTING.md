@@ -25,7 +25,7 @@ make check     # docs checks, fixtures, worker, Go API, typecheck, ESLint (web, 
 make demo      # the app on generated synthetic data: http://127.0.0.1:5173
 ```
 
-Then follow the walk-through in `docs/demo.md` (the same steps run as `make e2e`). `make setup` is safe to repeat. It needs Go, Node 24 and Python 3.11 or newer, and says exactly which one is missing. Make targets use `.venv` automatically; for a direct `python3` call run `source .venv/bin/activate`. `make setup` on Linux may not install Chromium's system libraries: if `make e2e` cannot start the browser, run `cd e2e && npx playwright install --with-deps chromium`.
+Then follow the walk-through in `docs/demo.md` (the same steps run as `make e2e`). `make setup` is safe to repeat. It needs Go, Node 24 and Python 3.11 or newer, and says exactly which one is missing. Make targets use `.venv` automatically; for a direct `python3` call run `source .venv/bin/activate`. The API starts its worker with `--python` (default `python3`, found on `PATH` and started by that path, so a venv on `PATH` works); pass an absolute path to use another interpreter, which needs numpy and astropy. The Go tests use `python3` from `PATH` the same way. `make setup` on Linux may not install Chromium's system libraries: if `make e2e` cannot start the browser, run `cd e2e && npx playwright install --with-deps chromium`.
 
 A dev container (`.devcontainer/devcontainer.json`) runs the same setup. **It is untested**: it was written without Docker available, so expect to fix it on first use and send the fix.
 
