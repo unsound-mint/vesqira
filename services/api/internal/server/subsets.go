@@ -643,6 +643,9 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(res.Summary, &summary); err != nil && len(res.Summary) > 0 {
 		log.Printf("subsets: the worker summary of %s cannot be read, so the record keeps only the subset keys: %v", nd.Name, err)
 	}
+	if summary == nil { // "summary": null decodes to a nil map without an error
+		summary = map[string]any{}
+	}
 	summary["subset"] = map[string]any{"id": sub.ID, "version": cur.Version}
 	summary["reuseKey"] = reuseKey(sub.ID, cur.Version, src, carry.key())
 	sraw, _ := json.Marshal(summary)
