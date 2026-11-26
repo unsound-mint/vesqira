@@ -48,7 +48,7 @@ export function SharePanel({ state, onState, onClose }: { state: PublishState | 
         {err ? <p className={s.error} role="alert">{err}</p> : null}
         {setup ? (
           <form className={s.form} onSubmit={(e) => { e.preventDefault(); void act(async () => { const st = await api.savePublishSettings({ url, ...(key ? { key } : {}), ownerName: owner, agentName: agent, spaceTitle: space }); onState(st); setKey(""); setSetup(false); }); }}>
-            <p className={s.muted}>Reports are published to your own publish server, so your supervisor can read them when this computer is off. It holds only what you publish. Setup: docs/setup/publish-server.md.</p>
+            <p className={s.muted}>Reports are published to your own publish server, so your supervisor can read them when this computer is off. It holds only what you publish. To set one up, run vesqira publish-server on your server and create a publisher key there with vesqira publish-server add-publisher.</p>
             <Input label="Publish server address" placeholder="https://reports.example.org" value={url} onChange={(e) => setUrl(e.target.value)} required />
             <Input label={state?.keySet ? "Publisher key (leave empty to keep the current one)" : "Publisher key"} type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} required={!state?.keySet} />
             <Input label="Your name, as readers see it" value={owner} onChange={(e) => setOwner(e.target.value)} />

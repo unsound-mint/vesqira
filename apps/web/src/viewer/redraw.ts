@@ -133,7 +133,7 @@ export async function redrawSceneFigure(f: Figure, o: { refresh: boolean }): Pro
           geometry[ov.id] = { key: ov.id, status: "ready", g };
         } catch (e) {
           // a layer the figure drew that cannot be drawn now is a reason to stop, never a layer quietly left out
-          throw new Error(describe(e, `${overlayTitle(ov, stored, nameOf)} cannot be drawn again`));
+          throw new Error(describe(e, `${overlayTitle(ov, stored, nameOf)} cannot be drawn again`), { cause: e });
         }
       }),
   );

@@ -2,11 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { authState, confirmEnrolment, secondFactor, setup, signIn, signOut, startEnrolment } from "../api/accounts";
 import type { AuthState, Enrolment } from "../api/accounts";
-import { ApiError } from "../api/http";
+import { errorMessage } from "../api/http";
 import { Button, Input } from "../ui";
 import s from "./Account.module.css";
 
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
 
 /** Reloads into the workbench once the session is full. */
 const enter = () => {
@@ -19,7 +18,7 @@ export function SignInPage() {
   const [state, setState] = useState<AuthState | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
-    void authState().then(setState, (e) => setError(message(e)));
+    void authState().then(setState, (e) => setError(errorMessage(e)));
   }, []);
   if (!state) return <main className={s.page}>{error ? <p className={s.error} role="alert">{error}</p> : null}</main>;
   if (state.stage === "full") {
@@ -45,7 +44,7 @@ function PasswordStep({ state, onDone }: { state: AuthState; onDone: (s: AuthSta
     e.preventDefault();
     setBusy(true);
     setError("");
-    signIn(username, password).then(onDone, (err) => setError(message(err))).finally(() => setBusy(false));
+    signIn(username, password).then(onDone, (err) => setError(errorMessage(err))).finally(() => setBusy(false));
   };
   return (
     <section className={s.card}>
@@ -75,7 +74,7 @@ function CodeStep({ onRestart }: { onRestart: () => void }) {
     e.preventDefault();
     setBusy(true);
     setError("");
-    secondFactor(recovery ? { recoveryCode: code } : { code }).then(enter, (err) => setError(message(err))).finally(() => setBusy(false));
+    secondFactor(recovery ? { recoveryCode: code } : { code }).then(enter, (err) => setError(errorMessage(err))).finally(() => setBusy(false));
   };
   return (
     <section className={s.card}>
@@ -107,14 +106,14 @@ export function TotpEnrolment({ start, confirm, onFinished }: { start: () => Pro
   useEffect(() => {
     if (started.current) return; // each start replaces the pending secret on the server: ask once, even when an effect runs twice
     started.current = true;
-    void start().then(setEn, (e) => setError(message(e)));
+    void start().then(setEn, (e) => setError(errorMessage(e)));
   }, [start]);
   if (codes) return <RecoveryCodes codes={codes} onDone={onFinished} />;
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError("");
-    confirm(code).then(setCodes, (err) => setError(message(err))).finally(() => setBusy(false));
+    confirm(code).then(setCodes, (err) => setError(errorMessage(err))).finally(() => setBusy(false));
   };
   return (
     <div className={s.form}>
@@ -180,7 +179,7 @@ export function SetupPage({ token }: { token: string }) {
     setup({ token, name, username, password }).then(() => {
       history.replaceState(null, "", location.pathname); // the link is spent: keep it out of the address bar and history
       setCreated(true);
-    }, (err) => setError(message(err))).finally(() => setBusy(false));
+    }, (err) => setError(errorMessage(err))).finally(() => setBusy(false));
   };
   return (
     <main className={s.page}>

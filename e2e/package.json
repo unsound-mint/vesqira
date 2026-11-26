@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "../tools/npm-in.sh ../tools/lint lint"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

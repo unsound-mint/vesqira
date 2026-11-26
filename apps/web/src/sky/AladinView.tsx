@@ -46,8 +46,8 @@ export function AladinView({ survey, frame, fit, items, selectedId, cursor, onPi
   const host = useRef<HTMLDivElement>(null);
   const live = useRef<{ A: AladinNs; al: AladinInstance; foot: AladinOverlay; cur: AladinOverlay } | null>(null);
   const [built, setBuilt] = useState(0);
-  const latest = useRef({ items, onPick, onStatus, fit });
-  latest.current = { items, onPick, onStatus, fit };
+  const latest = useRef({ items, onPick, onStatus, onApi, fit });
+  latest.current = { items, onPick, onStatus, onApi, fit };
 
   // one instance per survey and frame: the frame is a construction option of the library
   useEffect(() => {
@@ -118,7 +118,7 @@ export function AladinView({ survey, frame, fit, items, selectedId, cursor, onPi
       });
       live.current = { A, al, foot, cur };
       setBuilt((n) => n + 1); // the footprints and the cursor are drawn now that there is a picture to draw on
-      onApi({
+      latest.current.onApi({
         capture: async () => {
           const r = await al.getViewDataURL?.({ format: "image/png", logo: false });
           return typeof r === "string" ? r : null;
@@ -142,19 +142,19 @@ export function AladinView({ survey, frame, fit, items, selectedId, cursor, onPi
       clearTimeout(timer);
       ac.abort();
       live.current = null;
-      onApi(null);
+      latest.current.onApi(null);
       el.replaceChildren(); // Aladin Lite has no destroy: its canvas goes with its element
     };
-  }, [survey.url, survey.host, frame]); // eslint-disable-line react-hooks/exhaustive-deps -- callbacks are read through `latest`
+  }, [survey.url, survey.host, frame]); // callbacks are read through `latest`
 
   // go where the panel says when the selection or "fit" changes
   useEffect(() => {
-    const f = fit.view;
+    const f = latest.current.fit.view;
     if (f && live.current) {
       live.current.al.gotoRaDec(f.lon, f.lat);
       live.current.al.setFoV(f.fov);
     }
-  }, [fit.key]); // eslint-disable-line react-hooks/exhaustive-deps -- the key names the view
+  }, [fit.key]); // the key names the view
 
   // the footprints, the selected one heavier (and the list beside the picture names it, so colour is not the only cue)
   useEffect(() => {

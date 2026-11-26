@@ -1,5 +1,5 @@
 /* The reading surface of a report (reports mock B). Hierarchy comes from size, weight and space only: no rules between
-   sections, no boxes around text, no badges in the text. Uses the reading scale tokens (design-system.md). */
+   sections, no boxes around text, no badges in the text. Uses the reading scale tokens (`design/tokens.css`). */
 
 .doc {
   position: relative;

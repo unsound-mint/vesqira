@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError } from "../api/http";
+import { errorMessage } from "../api/http";
 import { grantFellBack, grantStateText, pollRelay, relayLocal, setRelayInbox, stateText } from "../api/runRequests";
 import type { RelayInbox, RelayLocal, TemplateBounds } from "../api/runRequests";
-import { Button, Checkbox, Input, LinkButton, Select } from "../ui";
+import { Button, Checkbox, Input, LinkButton, Select, formatWhen } from "../ui";
 import { ScrollTable } from "../ui/ScrollTable";
 import s from "../account/Account.module.css";
 import r from "./RunRequests.module.css";
 import { RelayedView } from "./RelayedView";
 import { StandingApprovals } from "./StandingApprovals";
 
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
-const when = (iso: string) => iso.slice(0, 16).replace("T", " ");
 
 const TEMPLATES = ["vgt", "rohsa"] as const;
 type Template = (typeof TEMPLATES)[number];
@@ -78,7 +76,7 @@ export function InboxPage() {
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState<number | null>(null);
   const [checking, setChecking] = useState(false);
-  const refresh = useCallback(() => relayLocal().then(setLocal, (e) => setError(message(e))), []);
+  const refresh = useCallback(() => relayLocal().then(setLocal, (e) => setError(errorMessage(e))), []);
   useEffect(() => {
     void refresh();
     const t = setInterval(() => void refresh(), 15000);
@@ -87,7 +85,7 @@ export function InboxPage() {
   const check = () => {
     setChecking(true);
     setError("");
-    pollRelay().then(setLocal, (e) => setError(message(e))).finally(() => setChecking(false));
+    pollRelay().then(setLocal, (e) => setError(errorMessage(e))).finally(() => setChecking(false));
   };
   const st = local?.state;
   const requests = [...(local?.requests ?? [])].sort((a, b) => ORDER.indexOf(a.localState) - ORDER.indexOf(b.localState) || b.updatedAt.localeCompare(a.updatedAt));
@@ -104,8 +102,8 @@ export function InboxPage() {
         <section className={s.card}>
           <h2 className={s.h2}>Status</h2>
           <p className={s.note} role="status">
-            Linked to {local.workspace || "a workspace"}. {st?.polledAt ? `Last checked ${when(st.polledAt)}` : "Not checked yet"}
-            {st?.answeredAt ? `, last answer ${when(st.answeredAt)}` : ""}.{st && st.failures > 0 ? ` ${st.failures} failed check(s) in a row.` : ""}{st?.message ? ` ${st.message}` : ""}
+            Linked to {local.workspace || "a workspace"}. {st?.polledAt ? `Last checked ${formatWhen(st.polledAt)}` : "Not checked yet"}
+            {st?.answeredAt ? `, last answer ${formatWhen(st.answeredAt)}` : ""}.{st && st.failures > 0 ? ` ${st.failures} failed check(s) in a row.` : ""}{st?.message ? ` ${st.message}` : ""}
             {st && !st.published ? " Your inbox is not published yet." : ""}
           </p>
           <div className={s.row}><Button onClick={check} disabled={checking}>{checking ? "Checking…" : "Check now"}</Button></div>
@@ -130,7 +128,7 @@ export function InboxPage() {
                       {x.grantState ? <span className={s.note}>{grantFellBack(x.grantState) ? `; waiting for you: ${grantStateText(x.grantState)}` : `; ${grantStateText(x.grantState)}`}</span> : null}
                     </td>
                     <td>{stateText(x.serverState)}</td>
-                    <td>{when(x.receivedAt)}</td>
+                    <td>{formatWhen(x.receivedAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -156,7 +154,7 @@ function Settings({ local, onSaved }: { local: RelayLocal; onSaved: (l: RelayLoc
     setError("");
     setSaved(false);
     const { inbox, hosts } = fromRows(rows, paused);
-    setRelayInbox(inbox, hosts).then((l) => { onSaved(l); setSaved(true); }, (e) => setError(message(e)));
+    setRelayInbox(inbox, hosts).then((l) => { onSaved(l); setSaved(true); }, (e) => setError(errorMessage(e)));
   };
   return (
     <section className={s.card}>

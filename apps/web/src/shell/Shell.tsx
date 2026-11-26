@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { Columns3, FileText, LifeBuoy, FolderOpen, FolderPlus, LayoutGrid, Server, Table2, Terminal as TerminalIcon, PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { BoardsView } from "../boards/BoardsView";
@@ -53,9 +53,9 @@ import { editorEnabled } from "../api/editor";
 import { terminalEnabled } from "../api/terminal";
 import { getCompat, isCatalog, isImage } from "../api/catalog";
 import { HealpixSampleDone, HealpixSamplePanel } from "../catalog/HealpixSample";
-import type { Compat, ImageDataset } from "../api/catalog";
+import type { ImageDataset } from "../api/catalog";
 import { useCatalog } from "../catalog/useCatalog";
-import { CompareBar, linkState } from "../viewer/CompareBar";
+import { CompareBar, compatOf, linkState } from "../viewer/CompareBar";
 import { getRendererNote, subscribeRendererNote } from "../viewer/glRenderer";
 import { CompareInspector } from "../viewer/CompareInspector";
 import { EM } from "../catalog/format";
@@ -79,11 +79,11 @@ import { useUndoKeys } from "../undo/keys";
 import type { Scene } from "../scene/scene";
 import type { Pixel } from "../viewer/useViewer";
 import { limits } from "../viewer/render";
-import { channelTarget, defaultPrefs, linkGroup, linkPills, links, mapPixel, sceneLink } from "../scene/link";
+import { channelTarget, defaultPrefs, linkGroup, linkMap, linkPills, links, mapPixel, sceneLink } from "../scene/link";
 import type { LinkPrefs, PaneId } from "../scene/link";
 import { useChannelLink, useSkyLink } from "../viewer/useLinkTransform";
 import { useLinkFollow } from "../viewer/useLinkFollow";
-import type { LinkControls } from "../viewer/CompareBar";
+import type { CompatState, LinkControls } from "../viewer/CompareBar";
 import { Button, IconButton, Pill, ResizeHandle, Section, getHostOffer, subscribeHostOffer } from "../ui";
 import { ErrorReferenceHost } from "./ErrorReferenceHost";
 import { LIMITS, useLayout } from "./useLayout";
@@ -106,7 +106,8 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const subs = useSubsets();
   const access = useAccess();
   const [subsetId, setSubsetId] = useState<number | null>(null); // a virtual subset is open in the main area instead of a dataset (ADR 0063)
-  useEffect(() => { void subs.refresh(); }, [cat.allDatasets]); // eslint-disable-line react-hooks/exhaustive-deps -- a changed file makes its subsets stale
+  const refreshSubsets = subs.refresh;
+  useEffect(() => { void refreshSubsets(); }, [cat.allDatasets, refreshSubsets]); // a changed file makes its subsets stale
   const hostOffer = useSyncExternalStore(subscribeHostOffer, getHostOffer); // a file-manager mount of an unregistered host (ADR 0031)
   const rendererNote = useSyncExternalStore(subscribeRendererNote, getRendererNote); // set only when drawing fell back to the CPU
   const { refreshDatasets, refreshRuns } = cat;
@@ -145,9 +146,8 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const viewerB = useViewer(compareDs);
   const [active, setActive] = useState<"a" | "b">("a");
   const [stage, setStage] = useState<"map" | "grid">("map"); // the map pane(s), or a grid of channel maps of the open dataset
-  const [compat, setCompat] = useState<Compat | null>(null);
-  const [compatErr, setCompatErr] = useState<string | null>(null);
-  const [compatLoading, setCompatLoading] = useState(false);
+  const [compatState, setCompatState] = useState<CompatState>({ status: "idle" });
+  const compat = compatOf(compatState);
   const [shared, setShared] = useState(false);
   const [sharedLimits, setSharedLimits] = useState<[number, number] | null>(null);
   const useB = active === "b" && compareDs !== null;
@@ -156,7 +156,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const other = useB ? viewerA : viewerB;
   // The two panes are one link group (ADR 0042, section 4): on the same grid on their own, on different grids once the person
   // links them by WCS, and only while both are in it. Who has left, the name and the facets belong to this pair of datasets.
-  const sameGrid = compareDs !== null && linkState(compat, compatLoading).linked;
+  const sameGrid = compareDs !== null && linkState(compatState).linked;
   const pairKey = `${shownImage?.id ?? ""}:${compareDs?.id ?? ""}`;
   const [prefsFor, setPrefsFor] = useState<{ key: string; p: LinkPrefs }>(() => ({ key: pairKey, p: defaultPrefs() }));
   const linkPrefs = prefsFor.key === pairKey ? prefsFor.p : defaultPrefs();
@@ -180,11 +180,12 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   useLinkFollow(group, { a: viewerA, b: viewerB }, active, { ab: skyAB, ba: skyBA }, { ab: chAB, ba: chBA }, { a: idA, b: idB });
   // a scene records how its pane was linked, so a figure says how its panes followed each other
   const linkKey = JSON.stringify(sceneLink(group, { a: idA, b: idB }));
-  useEffect(() => {
+  const recordLink = useEffectEvent(() => {
     const l = sceneLink(group, { a: idA, b: idB });
     viewerA.dispatch({ type: "setLink", link: l });
     viewerB.dispatch({ type: "setLink", link: l });
-  }, [linkKey, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => recordLink(), [linkKey, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]);
   // where the hovered pixel of one pane is in the other: the same pixel on one grid, the worker's transform otherwise
   const [outsideIn, setOutsideIn] = useState<PaneId | null>(null);
   function mirror(from: PaneId, p: Pixel | null) {
@@ -196,7 +197,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
       setOutsideIn(null);
       return;
     }
-    const m = mapPixel((from === "a" ? skyAB : skyBA).map, p);
+    const m = mapPixel(linkMap(from === "a" ? skyAB : skyBA), p);
     dest.setMirror(m.kind === "inside" ? m.at : null);
     setOutsideIn(m.kind === "outside" ? to : null);
   }
@@ -205,8 +206,9 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const activeChannels = useB ? chBA : chAB;
   const lead: PaneId = useB ? "b" : "a";
   const channelLine = (() => {
-    if (!byWcs || !group.facets.channel || !activeChannels.map) return null;
-    const t = channelTarget(activeChannels.map, viewer.channel);
+    const channelMap = linkMap(activeChannels);
+    if (!byWcs || !group.facets.channel || !channelMap) return null;
+    const t = channelTarget(channelMap, viewer.channel);
     const here = viewer.scene?.base.spectral;
     if (!t || !here) return null;
     const there = lead === "a" ? "B" : "A";
@@ -222,7 +224,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     const name = (useB ? shownImage : compareDs)?.name ?? "";
     if (group.basis === "same-grid") return { name, v: other };
     if (!group.facets.cursor) return null;
-    const m = viewer.probe ? mapPixel(activeSky.map, viewer.probe) : null;
+    const m = viewer.probe ? mapPixel(linkMap(activeSky), viewer.probe) : null;
     return { name, v: other, at: m === null || m.kind === "stale" ? ("pending" as const) : m.kind === "inside" ? m.at : ("outside" as const) };
   })();
 
@@ -250,42 +252,49 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     }
   }, [shared, compareDs, shareReason]);
   useEffect(() => {
-    // a limit changed on the map being worked in becomes the shared one
+    // a limit changed on the map being worked in becomes the shared one; an equal one is kept as it is, so nothing re-renders
     if (!shared) return;
     const c = viewer.customLimits;
-    if (viewer.range === "custom" && c && (!sharedLimits || c[0] !== sharedLimits[0] || c[1] !== sharedLimits[1])) setSharedLimits([c[0], c[1]]);
-  }, [shared, viewer.customLimits, viewer.range]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
+    if (viewer.range === "custom" && c) setSharedLimits((cur) => (cur && c[0] === cur[0] && c[1] === cur[1] ? cur : [c[0], c[1]]));
+  }, [shared, viewer.customLimits, viewer.range]);
+  const followSharedScale = useEffectEvent(() => {
     if (!shared || !sharedLimits) return;
     for (const v of [viewerA, viewerB]) {
       if (v.range !== "custom" || !v.customLimits || v.customLimits[0] !== sharedLimits[0] || v.customLimits[1] !== sharedLimits[1]) {
         v.dispatchFact({ type: "setDisplay", display: { limits: sharedLimits, range: "custom" } }); // follows the shared scale, not a command
       }
     }
-  }, [shared, sharedLimits, viewerA.range, viewerA.customLimits, viewerB.range, viewerB.customLimits]); // eslint-disable-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => followSharedScale(), [shared, sharedLimits, viewerA.range, viewerA.customLimits, viewerB.range, viewerB.customLimits]);
 
   // both scenes say their colour scale is shared, also after a pane opens another dataset (which starts a new scene)
-  useEffect(() => {
+  const markScaleGroup = useEffectEvent(() => {
     for (const v of [viewerA, viewerB]) v.setScaleGroup(shared ? "compare" : null);
-  }, [shared, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]); // eslint-disable-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => markScaleGroup(), [shared, viewerA.scene?.base.datasetId, viewerB.scene?.base.datasetId]);
 
   // Is the other map known to share this one's grid? Only then are cursor and channel linked.
+  const shownId = shownImage?.id;
+  const compareDsId = compareDs?.id;
+  const shownModified = shownImage?.modifiedAt;
+  const compareModified = compareDs?.modifiedAt;
   useEffect(() => {
-    setCompat(null);
-    setCompatErr(null);
-    if (!shownImage || !compareDs) return;
+    if (shownId === undefined || compareDsId === undefined) {
+      setCompatState({ status: "idle" });
+      return;
+    }
     let live = true;
-    setCompatLoading(true);
-    getCompat(shownImage.id, compareDs.id)
-      .then((c) => live && setCompat(c))
-      .catch((e: unknown) => live && setCompatErr(e instanceof Error ? e.message : "Could not compare the grids."))
-      .finally(() => live && setCompatLoading(false));
+    setCompatState({ status: "loading" });
+    getCompat(shownId, compareDsId)
+      .then((c) => live && setCompatState({ status: "ready", compat: c }))
+      .catch((e: unknown) => live && setCompatState({ status: "error", message: e instanceof Error ? e.message : "Could not compare the grids." }));
     return () => {
       live = false;
     };
-  }, [shownImage?.id, compareDs?.id, shownImage?.modifiedAt, compareDs?.modifiedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [shownId, compareDsId, shownModified, compareModified]);
   const collapsedForCompare = useRef(false);
-  useEffect(() => {
+  // runs when a comparison opens or closes, not when the explorer is toggled by hand
+  const fitExplorerToCompare = useEffectEvent(() => {
     if (!compareDs) {
       setActive("a");
       if (collapsedForCompare.current) toggle("sideOpen"); // give the explorer back when the comparison ends
@@ -294,10 +303,16 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
       collapsedForCompare.current = true; // two maps need the width
       toggle("sideOpen");
     }
-  }, [compareDs?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!links(group, "cursor")) viewerA.setMirror(null), viewerB.setMirror(null), setOutsideIn(null);
-  }, [linked, group?.facets.cursor, group?.basis]); // eslint-disable-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => fitExplorerToCompare(), [compareDsId]);
+  const clearMirror = useEffectEvent(() => {
+    if (!links(group, "cursor")) {
+      viewerA.setMirror(null);
+      viewerB.setMirror(null);
+      setOutsideIn(null);
+    }
+  });
+  useEffect(() => clearMirror(), [linked, group?.facets.cursor, group?.basis]);
   const [focusJob, setFocusJob] = useState<number | null>(null);
   const [familyPreset, setFamilyPreset] = useState<FamilyPreset | null>(null);
   const [mode, setMode] = useState<"viewer" | "boards" | "jobs" | "reports" | "runs" | "run" | "rerun" | "open" | "look" | "needs" | "health" | "import" | "family">("viewer");
@@ -367,7 +382,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
   const narrowNow = () => typeof matchMedia === "function" && matchMedia("(width <= 800px)").matches;
   useEffect(() => {
     if (narrowNow()) set("sideOpen", false);
-  }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, set]);
   useEffect(() => {
     if (typeof matchMedia !== "function") return;
     const q = matchMedia("(width <= 800px)");
@@ -375,7 +390,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
     const onChange = () => { if (q.matches) { set("sideOpen", false); set("inspOpen", false); } };
     q.addEventListener("change", onChange);
     return () => q.removeEventListener("change", onChange);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [set]);
   const openSubset = (id: number) => {
     setSubsetId(id);
     cat.select(null);
@@ -540,7 +555,7 @@ export function Shell({ account }: { account?: ReactNode } = {}) {
             ) : (
           <div className={s.compare}>
             <div className={s.undoRow}><UndoBar surface="map" undoName={viewer.undoName} redoName={viewer.redoName} onUndo={viewer.undo} onRedo={viewer.redo} /></div>
-            {virtualDs ? null : <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={shownImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} compat={compat} loading={compatLoading} error={compatErr} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} link={linkControls} />}
+            {virtualDs ? null : <CompareBar hosts={cat.hosts} datasets={cat.datasets} selectedId={shownImage.id} compareId={compareDs?.id ?? null} onChange={setCompareId} state={compatState} shared={shared} canShare={canShare} shareReason={shareReason} onShared={toggleShared} link={linkControls} />}
             <div className={compareDs ? s.panes2 : s.panes1}>
               <section className={s.pane} aria-label={`Map: ${shownImage.name}`}>
                 {compareDs ? <PaneHeader name={shownImage.name} axial={viewerA.interp !== null} active={!useB} onActivate={() => setActive("a")} note={outsideIn === "a" ? OUTSIDE_NOTE : null} /> : null}

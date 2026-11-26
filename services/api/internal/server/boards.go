@@ -404,7 +404,7 @@ func checkChannelGrid(g scene.ChannelGrid, d catalog.Dataset, vp ViewParams) err
 	if g.DatasetID != d.ID {
 		return refuse("the grid's dataset is not the figure's")
 	}
-	if d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+	if d.Interpretation.IsAxial() {
 		return refuse("an orientation map has no channel grid: averaging angles across channels is not valid")
 	}
 	v := vp.Grid

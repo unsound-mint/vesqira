@@ -180,7 +180,7 @@ func (s *Server) healpixSample(w http.ResponseWriter, r *http.Request) {
 	// The angle map is declared by the operation that made it: degrees, east of north in the grid's own celestial frame ("sky", no
 	// skyFrame), and the quantity asked for. It is a proposal labelled as the analysis', like every orientation result (analysisAuthor).
 	frame, quantity := "sky", in.Product
-	if err := s.Store.SetInterpretation(nd, catalog.Interpretation{Kind: "axial_orientation", Unit: "deg", Frame: &frame, Quantity: &quantity, DeclaredBy: analysisAuthor}); err != nil {
+	if err := s.Store.SetInterpretation(nd, catalog.Interpretation{Kind: catalog.AxialOrientation, Unit: "deg", Frame: &frame, Quantity: &quantity, DeclaredBy: analysisAuthor}); err != nil {
 		log.Printf("healpix: interpretation of the result: %v", err)
 	} else if got, err := s.Store.Get(wsOf(r), nd.ID); err == nil {
 		nd = got

@@ -45,6 +45,7 @@ func scanGrant(row interface{ Scan(...any) error }) (Grant, error) {
 		return g, err
 	}
 	g.MaxCoreHours = coreMin / 60
+	// these lists are written with json.Marshal; an unreadable one reads as empty, which grants nothing
 	_ = json.Unmarshal([]byte(keys), &g.Keys)
 	_ = json.Unmarshal([]byte(roots), &g.Roots)
 	_ = json.Unmarshal([]byte(files), &g.Files)

@@ -66,6 +66,7 @@ func capPaths(ps []string) []string {
 
 func (s *Server) storedSummaryOf(p projects.Project) storedSummary {
 	var sum storedSummary
+	// a project not yet scanned has an empty summary and reads as zero
 	_ = json.Unmarshal(p.Summary, &sum)
 	return sum
 }
@@ -205,7 +206,7 @@ func (s *Server) computeNeeds(ws workspace.ID, p projects.Project) ([]need, erro
 				continue
 			}
 			in, ok := props[fa.ID]
-			if !ok || in.Kind != "axial_orientation" || catalog.IsFileHeaderAuthor(in.DeclaredBy) {
+			if !ok || !in.IsAxial() || catalog.IsFileHeaderAuthor(in.DeclaredBy) {
 				continue // the file's own header is not a proposal to confirm: it says what it says, and is shown as declared by the file
 			}
 			id := fa.ID
@@ -516,7 +517,7 @@ func (s *Server) applyAnswer(ws workspace.ID, n need, in answerIn) error {
 		if unit == "" {
 			unit = d.Interpretation.Unit
 		}
-		return s.Store.SetInterpretation(d, catalog.Interpretation{Kind: "axial_orientation", Unit: unit, ReliabilityID: d.Interpretation.ReliabilityID,
+		return s.Store.SetInterpretation(d, catalog.Interpretation{Kind: catalog.AxialOrientation, Unit: unit, ReliabilityID: d.Interpretation.ReliabilityID,
 			Frame: d.Interpretation.Frame, Quantity: d.Interpretation.Quantity, DeclaredBy: "user"})
 	case "not_axial":
 		return s.Store.ClearInterpretation(d.ID)

@@ -5,9 +5,16 @@ import type { LinkFacet, LinkGroup, LinkPrefs, Pill as PillSpec } from "../scene
 import { datasetLabels } from "./datasetLabels";
 import s from "./CompareBar.module.css";
 
+/** The answer to "do these two maps share a grid?": not asked, being asked, answered, or the question failed. */
+export type CompatState = { status: "idle" | "loading" } | { status: "ready"; compat: Compat } | { status: "error"; message: string };
+
+/** The answer, once there is one. */
+export const compatOf = (c: CompatState): Compat | null => (c.status === "ready" ? c.compat : null);
+
 /** Links only maps that are known to share a grid. Otherwise they sit side by side, unlinked, with the reasons. */
-export function linkState(compat: Compat | null, loading: boolean): { linked: boolean; text: string; tone: "ok" | "warn" | "neutral" } {
-  if (loading || !compat) return { linked: false, text: "Checking the grids…", tone: "neutral" };
+export function linkState(state: CompatState): { linked: boolean; text: string; tone: "ok" | "warn" | "neutral" } {
+  const compat = compatOf(state);
+  if (!compat) return { linked: false, text: "Checking the grids…", tone: "neutral" };
   return compat.compatible
     ? { linked: true, text: "Same grid: cursor and channel are linked", tone: "ok" }
     : { linked: false, text: "Different or unconfirmed grids: not linked, nothing is resampled", tone: "warn" };
@@ -23,15 +30,13 @@ export type LinkControls = {
   channelLine: string | null;
 };
 
-export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChange, compat, loading, error, shared = false, canShare = false, shareReason = null, onShared, link }: {
+export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChange, state, shared = false, canShare = false, shareReason = null, onShared, link }: {
   hosts?: { id: number; name: string }[];
   datasets: Dataset[];
   selectedId: number;
   compareId: number | null;
   onChange: (id: number | null) => void;
-  compat: Compat | null;
-  loading: boolean;
-  error: string | null;
+  state: CompatState;
   shared?: boolean;
   canShare?: boolean;
   shareReason?: string | null;
@@ -40,7 +45,9 @@ export function CompareBar({ hosts = [], datasets, selectedId, compareId, onChan
 }) {
   const others = datasets.filter((d) => d.id !== selectedId);
   const labels = datasetLabels(others, (id) => hosts.find((h) => h.id === id)?.name ?? "host", { hostAlways: true });
-  const st = linkState(compat, loading);
+  const compat = compatOf(state);
+  const error = state.status === "error" ? state.message : null;
+  const st = linkState(state);
   const both = !!link && link.prefs.members.a && link.prefs.members.b;
   // the pill: the group's own statements when linked; otherwise why they are not (different grids, or a pane left)
   const pills = link?.group

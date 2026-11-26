@@ -1,0 +1,19 @@
+{
+  "name": "@vesqira/lint",
+  "private": true,
+  "version": "0.0.0",
+  "license": "AGPL-3.0-only",
+  "description": "ESLint for apps/web, e2e and packages. Separate from apps/web because typescript-eslint needs the TypeScript 5 or 6 compiler API, which TypeScript 7 does not provide.",
+  "type": "module",
+  "scripts": {
+    "lint": "cd ../.. && eslint --config tools/lint/eslint.config.js apps/web e2e packages"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.15.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.14.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.74.0"
+  }
+}

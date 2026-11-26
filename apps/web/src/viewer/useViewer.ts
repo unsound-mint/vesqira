@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from "react";
 import { ApiError } from "../api/catalog";
 import { usesOf } from "../catalog/MaskPolicies";
 import type { PolicyChoice } from "../catalog/MaskPolicies";
 import { useMasks } from "./useMasks";
 import { expandPreview, getAxial, isVirtualId, getConversions, getConvert, getCoord, getPlane, getSpectrum, getView, previewStep } from "../api/planes";
 import { isOfflineMissing, setOfflineMissing } from "../api/offlineState";
-import { newRequestId } from "../api/http";
+import { newRequestId, isAbort } from "../api/http";
 import type { AxialStats, Conversions, Converted, Coord, LineShape, Plane, RegionShape, Spectrum, View } from "../api/planes";
 import type { Dataset } from "../api/catalog";
 import type { Tool } from "./region";
@@ -27,7 +27,6 @@ export type Pixel = { x: number; y: number };
 export type ConvChoice = { spectral: string; convention: string; frame: string; to: string };
 export const NO_CONV: ConvChoice = { spectral: "", convention: "radio", frame: "", to: "" };
 
-const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const message = (e: unknown, fallback: string) => (e instanceof ApiError ? e.message : fallback);
 
 /**
@@ -116,23 +115,23 @@ export function useViewer(dataset: Dataset | null) {
   const showLines = orientationOf(scene)?.visible ?? pane.keep.linesVisible;
   const zoom = scene?.view.zoom ?? 1; // 1 = the picture fitted to its pane
 
-  const setChannel = useCallback((c: number) => dispatch({ type: "setChannel", channel: c }), []);
-  const setColormap = useCallback((c: ColormapId) => dispatch({ type: "setDisplay", display: { colormap: c } }), []);
-  const setStretch = useCallback((x: Stretch) => dispatch({ type: "setDisplay", display: { stretch: x } }), []);
-  const setRange = useCallback((r: RangeMode) => dispatch({ type: "setDisplay", display: { range: r } }), []);
-  const setCustomLimits = useCallback((l: [number, number] | null) => dispatch({ type: "setDisplay", display: { limits: l } }), []);
-  const setScaleGroup = useCallback((g: string | null) => dispatch({ type: "setDisplay", display: { scaleGroup: g } }), []);
-  const setRegion = useCallback((r: RegionShape | null) => dispatch({ type: "updateOverlay", id: REGIONS_ID, patch: { active: r } }), []);
-  const setShowLines = useCallback((on: boolean) => dispatch({ type: "updateOverlay", id: ORIENTATION_ID, patch: { visible: on } }), []);
-  const setZoom = useCallback((z: number) => dispatch({ type: "setView", view: { zoom: z } }), []);
-  const setCentre = useCallback((c: ScenePoint | null) => dispatch({ type: "setView", view: { centre: c } }), []);
+  const setChannel = useCallback((c: number) => dispatch({ type: "setChannel", channel: c }), [dispatch]);
+  const setColormap = useCallback((c: ColormapId) => dispatch({ type: "setDisplay", display: { colormap: c } }), [dispatch]);
+  const setStretch = useCallback((x: Stretch) => dispatch({ type: "setDisplay", display: { stretch: x } }), [dispatch]);
+  const setRange = useCallback((r: RangeMode) => dispatch({ type: "setDisplay", display: { range: r } }), [dispatch]);
+  const setCustomLimits = useCallback((l: [number, number] | null) => dispatch({ type: "setDisplay", display: { limits: l } }), [dispatch]);
+  const setScaleGroup = useCallback((g: string | null) => dispatch({ type: "setDisplay", display: { scaleGroup: g } }), [dispatch]);
+  const setRegion = useCallback((r: RegionShape | null) => dispatch({ type: "updateOverlay", id: REGIONS_ID, patch: { active: r } }), [dispatch]);
+  const setShowLines = useCallback((on: boolean) => dispatch({ type: "updateOverlay", id: ORIENTATION_ID, patch: { visible: on } }), [dispatch]);
+  const setZoom = useCallback((z: number) => dispatch({ type: "setView", view: { zoom: z } }), [dispatch]);
+  const setCentre = useCallback((c: ScenePoint | null) => dispatch({ type: "setView", view: { centre: c } }), [dispatch]);
   const [path, setPath] = useState<LineShape | null>(null);
   const savedRegions = useSavedRegions(virtual ? null : datasetId, setRegion, setPath);
 
   // The declaration can change while the map is open (declared axial, or withdrawn); the scene's mapping and its own
   // orientation lines follow it.
   const isAxial = interp !== null;
-  useEffect(() => dispatch({ type: "syncAxial", axial: isAxial }), [isAxial]);
+  useEffect(() => dispatch({ type: "syncAxial", axial: isAxial }), [dispatch, isAxial]);
 
   // Saved regions are server rows. The scene keeps the shapes it draws (the shown ones, the selected one emphasised), so
   // a scene says what is on screen without a lookup.
@@ -141,15 +140,17 @@ export function useViewer(dataset: Dataset | null) {
   useEffect(() => {
     const saved = savedList.filter((r) => !hiddenSaved.has(r.id)).map((r) => ({ id: r.id, shape: savedShape(r) as SceneRegion, ...(r.id === selectedSaved ? { selected: true } : {}) }));
     dispatch({ type: "updateOverlay", id: REGIONS_ID, patch: { saved } });
-  }, [savedList, hiddenSaved, selectedSaved, sceneDataset]);
+  }, [dispatch, savedList, hiddenSaved, selectedSaved, sceneDataset]);
 
   // A different dataset: forget everything that belonged to the previous one.
+  // Declaring a map axial must not start the viewer over, so the reset reads the declaration without depending on it.
+  const startOver = useEffectEvent((id: number | null) => dispatch({ type: "resetForDataset", datasetId: id, axial: interp !== null }));
   useEffect(() => {
     setView(null);
     setViewError(null);
     setPlane(null);
     setPlaneError(null);
-    dispatch({ type: "resetForDataset", datasetId, axial: interp !== null }); // channel 0, fitted, no region; colours carry over
+    startOver(datasetId); // channel 0, fitted, no region; colours carry over
     setHover(null);
     setPinned(null);
     setPicked(null);
@@ -167,7 +168,7 @@ export function useViewer(dataset: Dataset | null) {
       .then(setView)
       .catch((e: unknown) => !isAbort(e) && setViewError(message(e, "Could not read the dataset layout.")));
     return () => ac.abort();
-  }, [datasetId, retry, fileTime]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, retry, fileTime]);
 
   // Declaring or withdrawing a unit, or a correction, changes what every head says. Read the layout again (the plane and the spectrum follow the
   // new view) without starting over: the channel and the region stay. A different dataset starts over by itself, above.
@@ -252,18 +253,20 @@ export function useViewer(dataset: Dataset | null) {
     if (!plane || plane.head.preview) return;
     const v = plane.head.spectral_value;
     dispatch({ type: "setSpectral", channel: plane.head.channel, spectral: v !== null ? { value: v, unit: plane.head.spectral_unit ?? "" } : null });
-  }, [plane]);
+  }, [dispatch, plane]);
 
   // World coordinates come from the worker (astropy), for the pixel under the pointer in the plane on screen.
+  const probeX = probe?.x;
+  const probeY = probe?.y;
   useEffect(() => {
-    if (datasetId === null || !probe || shownChannel === null) {
+    if (datasetId === null || probeX === undefined || probeY === undefined || shownChannel === null) {
       setCoord(null);
       setCoordError(null);
       return;
     }
     const ac = new AbortController();
     const t = setTimeout(() => {
-      getCoord(datasetId, probe.x, probe.y, shownChannel, ac.signal)
+      getCoord(datasetId, probeX, probeY, shownChannel, ac.signal)
         .then((c) => {
           setCoord(c);
           setCoordError(null);
@@ -278,7 +281,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, probe?.x, probe?.y, shownChannel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, probeX, probeY, shownChannel]);
 
   // What the file allows (spectral units, sky frames, brightness units) is read again whenever the layout is: a declared unit changes it.
   useEffect(() => {
@@ -291,7 +294,7 @@ export function useViewer(dataset: Dataset | null) {
       .then((o) => setOffers(o && typeof o === "object" && "value" in o ? o : null))
       .catch((e: unknown) => !isAbort(e) && setOffers(null));
     return () => ac.abort();
-  }, [datasetId, view]);
+  }, [datasetId, view, virtual]);
 
   // A choice the file no longer allows (the unit was withdrawn, say) is dropped, never kept silently.
   useEffect(() => {
@@ -315,16 +318,18 @@ export function useViewer(dataset: Dataset | null) {
   // a conversion is shown only for the pixel, channel and choices it was computed for
   const convKey = probe && shownChannel !== null ? [probe.x, probe.y, shownChannel, conv.spectral, conv.spectral ? conv.convention : "", conv.frame, conv.to, convValue].join("|") : null;
 
+  // The effect restarts when convKey says the question changed; the request reads the question's parts as they are when it is sent.
+  const askConvert = useEffectEvent((id: number, signal: AbortSignal) => (probe && shownChannel !== null ? getConvert(id, probe.x, probe.y, shownChannel, { ...conv, value: convValue }, signal) : null));
   useEffect(() => {
-    if (datasetId === null || !probe || shownChannel === null || !convWanted || convKey === null) {
+    if (datasetId === null || !convWanted || convKey === null) {
       setConverted(null);
       setConvError(null);
       return;
     }
     const ac = new AbortController();
     const t = setTimeout(() => {
-      getConvert(datasetId, probe.x, probe.y, shownChannel, { ...conv, value: convValue }, ac.signal)
-        .then((r) => {
+      askConvert(datasetId, ac.signal)
+        ?.then((r) => {
           setConverted({ key: convKey, r });
           setConvError(null);
         })
@@ -338,9 +343,11 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, convKey, convWanted]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, convKey, convWanted]);
 
-  // The mean spectrum of the region, from the worker. A newer region aborts the older request.
+  // The mean spectrum of the region, from the worker. A newer region aborts the older request. Which masks apply is read when the
+  // request is sent: maskKey says when they changed.
+  const currentMaskUses = useEffectEvent(() => maskUses);
   useEffect(() => {
     if (datasetId === null || !view || !region) {
       setSpectrum(null);
@@ -353,7 +360,7 @@ export function useViewer(dataset: Dataset | null) {
     const t = setTimeout(() => {
       const rid = newRequestId();
       setSpectrumRequestId(rid);
-      getSpectrum(datasetId, region, ac.signal, rid, maskUses)
+      getSpectrum(datasetId, region, ac.signal, rid, currentMaskUses())
         .then((sp) => {
           setSpectrum(sp);
           setSpectrumError(null);
@@ -370,7 +377,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, view, region, maskKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, view, region, maskKey]);
 
   // The paired reliability map (one plane), for readouts and line opacity.
   useEffect(() => {
@@ -381,11 +388,11 @@ export function useViewer(dataset: Dataset | null) {
       .then(setReliability)
       .catch((e: unknown) => !isAbort(e) && setReliability(null));
     return () => ac.abort();
-  }, [datasetId, view, relId]);
+  }, [datasetId, view, relId, virtual]);
 
   // Orientation statistics (doubled-angle) for the whole map or the region, once the user has declared the map axial.
   useEffect(() => {
-    if (datasetId === null || !view || !interp || virtual) {
+    if (datasetId === null || !view || !isAxial || virtual) {
       setAxial(null);
       setAxialError(null);
       return;
@@ -407,7 +414,7 @@ export function useViewer(dataset: Dataset | null) {
       clearTimeout(t);
       ac.abort();
     };
-  }, [datasetId, view, interp?.kind, unit, relId, region]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [datasetId, view, isAxial, interp?.kind, unit, relId, region, virtual]);
 
   const channels = view?.channels ?? 0;
   const onChannelKey = useCallback(
@@ -417,7 +424,7 @@ export function useViewer(dataset: Dataset | null) {
       setChannel(next);
       return true;
     },
-    [channel, channels],
+    [channel, channels, setChannel],
   );
 
   const pixelValue = pixelNumber;

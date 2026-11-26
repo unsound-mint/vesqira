@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { Button, Input, Select } from "../ui";
 import type { Job, JobTemplate } from "../api/jobs";
 import { createSweep, gib, parseValues, previewSweep } from "../api/sweeps";
@@ -29,11 +29,11 @@ export function SweepForm({ jobs, templates, baseJobId, onCreated }: { jobs: Job
   const [busy, setBusy] = useState(false);
 
   // a row starts on the template's first setting, and returns to it when its setting is not one the base's tool has
-  useEffect(() => {
+  const restoreRowKeys = useEffectEvent(() => {
     if (KEYS.length === 0) return;
     setRows((cur) => (cur.every((r) => KEYS.some((k) => k.key === r.key)) ? cur : cur.map((r) => (KEYS.some((k) => k.key === r.key) ? r : { ...r, key: firstKey }))));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [template, templates]);
+  });
+  useEffect(() => restoreRowKeys(), [template, templates]);
 
   const request = (): SweepRequest => ({
     name: name.trim(),

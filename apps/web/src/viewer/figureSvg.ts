@@ -1,10 +1,10 @@
-import { BG, canvasMeasure, COMPASS_LETTER_PX, COMPASS_MARKER_PX, compassLayout, FONT, INK, INK2, layoutImageFigure, MASK_ROW, MONO } from "./figure";
+import { canvasMeasure, COMPASS_LETTER_PX, COMPASS_MARKER_PX, compassLayout, FONT, layoutImageFigure, MASK_ROW, MONO } from "./figure";
 import type { ImageFigure, Measure } from "./figure";
 import { dashOf, FIGURE_STROKE, HALO, LABEL_PX } from "../scene/overlays";
 import { HATCH } from "./maskHatch";
 import type { MaskType } from "../api/masks";
 import type { Mark } from "../scene/overlays";
-import { OVERLAY_COLORS } from "../scene/palette";
+import { BG, INK, INK2, OVERLAY_COLORS } from "../scene/palette";
 
 /**
  * SVG export of a plane figure (ADR 0042, section 5). It is a second backend of the same drawing as the PNG: the layout is
@@ -36,7 +36,7 @@ export function withoutOwnerKeys(v: unknown): unknown {
   return v;
 }
 
-// eslint-disable-next-line no-control-regex
+// eslint-disable-next-line no-control-regex -- the control characters are the point: XML 1.0 forbids exactly these
 const XML_BAD = /[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g;
 export const xmlEscape = (s: string) => s.replace(XML_BAD, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const n = (v: number) => String(Math.round(v * 1000) / 1000);

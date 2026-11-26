@@ -83,6 +83,7 @@ func (l *Local) State(origin string) (LocalState, error) {
 		return st, err
 	}
 	st.Configured = true
+	// these columns are written with json.Marshal; an unreadable one reads as empty and the defaults below fill it
 	_ = json.Unmarshal([]byte(inbox), &st.Inbox)
 	_ = json.Unmarshal([]byte(hosts), &st.Hosts)
 	if st.Inbox.Labels == nil {
@@ -170,6 +171,7 @@ func scanMirror(row interface{ Scan(...any) error }) (Mirrored, error) {
 	if err != nil {
 		return m, err
 	}
+	// these columns are written with json.Marshal; an unreadable one reads as empty
 	_ = json.Unmarshal([]byte(raw), &m.Request)
 	_ = json.Unmarshal([]byte(draft), &m.Draft)
 	for _, p := range []struct {

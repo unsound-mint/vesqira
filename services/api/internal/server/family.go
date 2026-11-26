@@ -112,7 +112,7 @@ func (s *Server) familyAgreement(w http.ResponseWriter, r *http.Request) {
 		if in.Labels != nil && strings.TrimSpace(in.Labels[i]) != "" {
 			members[i].Label = strings.TrimSpace(in.Labels[i])
 		}
-		if d.Interpretation != nil && d.Interpretation.Kind == "axial_orientation" {
+		if d.Interpretation.IsAxial() {
 			axial++
 			if d.Interpretation.Stale {
 				fail(w, 409, d.Name+" changed since you declared it as an orientation map; declare it again to confirm the unit and frame still apply")

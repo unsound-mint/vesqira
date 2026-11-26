@@ -276,6 +276,7 @@ func (s *Server) proposeProductUnit(ws workspace.ID, d catalog.Dataset, role str
 		return ""
 	}
 	var h fileUnit
+	// the header is the worker's report as stored; an unreadable one states no unit
 	_ = json.Unmarshal(d.Header, &h)
 	if h.Bunit != nil {
 		if runs.SameUnit(*h.Bunit, unit) {
@@ -330,6 +331,7 @@ func (s *Server) rohsaRunsFor(ws workspace.ID, d catalog.Dataset) ([]rohsaRunVie
 		}
 		v := rohsaRunView{RunID: r.RunID, Name: r.RunName, NGauss: r.Info.NGauss, NGaussBasis: r.Info.NGaussBasis, CropDatasetID: crop.ID, CropName: crop.Name, IsCrop: crop.ID == d.ID}
 		var h fileUnit
+		// the header is the worker's report as stored; an unreadable one states no unit
 		_ = json.Unmarshal(crop.Header, &h)
 		v.CropBunit = h.Bunit
 		var refusal string
@@ -634,9 +636,11 @@ func (s *Server) rohsaIndex(w http.ResponseWriter, r *http.Request) {
 		fail(w, 502, "the worker answered unexpectedly")
 		return
 	}
+	// an absent or non-boolean key reads as false
 	flag := func(k string) bool { var b bool; _ = json.Unmarshal(head[k], &b); return b }
 	if t.host != nil {
 		var file, state string
+		// an absent key reads as empty
 		_ = json.Unmarshal(head["cache_file"], &file)
 		_ = json.Unmarshal(head["state"], &state)
 		if flag("created") {

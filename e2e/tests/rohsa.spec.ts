@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import type { Page } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,7 +60,7 @@ test("a ROHSA fit is imported and its Gaussian components are read at a pinned p
   await page.getByLabel("CNM width cut σ (km/s)").fill("2.5");
   await expect(rows.nth(3).getByRole("cell").nth(5)).toHaveText("CNM");
 
-  await page.screenshot({ path: path.resolve(here, "../.run/rohsa-components.png"), fullPage: false });
+  await page.screenshot({ path: path.resolve(here, "../test-results/rohsa-components.png"), fullPage: false });
   const axe = await new AxeBuilder({ page: page as never }).withTags(["wcag2a", "wcag2aa", "best-practice"]).analyze();
   expect(axe.violations.map((v) => `${v.id}: ${v.nodes[0]?.target.join(" ")}`)).toEqual([]);
 });

@@ -39,6 +39,7 @@ type hpEnv struct {
 	h                                                   hosts.Host
 	regions                                             *regions.Store
 	boards                                              *boards.Store
+	jobs                                                *jobs.Store
 }
 
 func newHostParity(t *testing.T) *hpEnv {
@@ -108,7 +109,7 @@ PATH=%s:$PATH exec sh -c "$cmd"
 	}
 	rg, _ := regions.Open(cat.DB())
 	sb, _ := subsets.Open(cat.DB())
-	e.regions, e.boards = rg, bs
+	e.regions, e.boards, e.jobs = rg, bs, js
 	rs, err := sourceroot.New([]string{e.localRoot, e.derivedDir})
 	if err != nil {
 		t.Fatal(err)

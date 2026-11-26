@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { follow, followWcs } from "../scene/link";
+import { useEffect, useEffectEvent, useRef } from "react";
+import { follow, followWcs, linkMap } from "../scene/link";
 import type { ChannelState, LinkGroup, PaneId, SkyMap, SkyState } from "../scene/link";
 import type { Viewer } from "./useViewer";
 
@@ -25,8 +25,10 @@ export function useLinkFollow(group: LinkGroup | null, v: Panes, active: PaneId,
   const led = useRef<PaneId>("a"); // the pane whose view was last followed
   const sa = v.a.scene;
   const sb = v.b.scene;
+  const skyMap = { ab: linkMap(sky.ab), ba: linkMap(sky.ba) };
+  const chanMap = { ab: linkMap(chan.ab), ba: linkMap(chan.ba) };
   const key = group
-    ? [group.basis, ids.a, ids.b, v.a.channels, v.b.channels, group.facets.channel, group.facets.view, chan.ab.map !== null, chan.ba.map !== null, sky.ab.map !== null, sky.ba.map !== null].join("|")
+    ? [group.basis, ids.a, ids.b, v.a.channels, v.b.channels, group.facets.channel, group.facets.view, chanMap.ab !== null, chanMap.ba !== null, skyMap.ab !== null, skyMap.ba !== null].join("|")
     : null;
   const cha = sa?.base.channel ?? null;
   const chb = sb?.base.channel ?? null;
@@ -34,14 +36,15 @@ export function useLinkFollow(group: LinkGroup | null, v: Panes, active: PaneId,
   const viewB = sb ? JSON.stringify(sb.view) : "";
   const imageA = v.a.view ? { w: v.a.view.width, h: v.a.view.height } : null;
   const imageB = v.b.view ? { w: v.b.view.width, h: v.b.view.height } : null;
-  useEffect(() => {
+  // The effect runs when the key, a channel, a view or a link map changes; what it does reads the rest as it is then.
+  const sync = useEffectEvent(() => {
     if (!group || key === null || !sa || !sb) {
       seen.current = null;
       mine.current = flags();
       return;
     }
     const prev = seen.current;
-    const cur: Seen = { key, ch: { a: cha, b: chb }, view: { a: viewA, b: viewB }, sky: { a: sky.ab.map, b: sky.ba.map } };
+    const cur: Seen = { key, ch: { a: cha, b: chb }, view: { a: viewA, b: viewB }, sky: { a: skyMap.ab, b: skyMap.ba } };
     seen.current = cur;
     const scenes = { a: sa, b: sb };
     const images = { a: imageA, b: imageB };
@@ -51,7 +54,7 @@ export function useLinkFollow(group: LinkGroup | null, v: Panes, active: PaneId,
       const only = facet === "ch" ? { channel: true, view: false } : { channel: false, view: true };
       const actions = group.basis === "same-grid"
         ? follow(group, scenes[from], scenes[to], { from: v[from].channels, to: v[to].channels }).filter((a) => a.type === (facet === "ch" ? "setChannel" : "setView"))
-        : followWcs(group, scenes[from], scenes[to], { sky: sky[dir].map, channels: chan[dir].map, fromImage: images[from], toImage: images[to] }, only);
+        : followWcs(group, scenes[from], scenes[to], { sky: skyMap[dir], channels: chanMap[dir], fromImage: images[from], toImage: images[to] }, only);
       for (const a of actions) {
         mine.current[facet][to] = true;
         v[to].dispatchFact(a); // a pane following its partner is not a command of the person's: its undo stays its own
@@ -77,5 +80,6 @@ export function useLinkFollow(group: LinkGroup | null, v: Panes, active: PaneId,
       if (driver) drive(driver, facet);
       else if (facet === "view" && cur.sky[led.current] !== prev.sky[led.current]) drive(led.current, facet);
     }
-  }, [key, cha, chb, viewA, viewB, active, sky.ab.map, sky.ba.map, chan.ab.map, chan.ba.map]); // eslint-disable-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => sync(), [key, cha, chb, viewA, viewB, active, skyMap.ab, skyMap.ba, chanMap.ab, chanMap.ba]);
 }

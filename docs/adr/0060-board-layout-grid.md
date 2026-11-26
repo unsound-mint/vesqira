@@ -48,7 +48,7 @@ A board was an ordered list of panels (`board_items.position`), shown one per ro
 - Unit tests for the engine (`layout.test.ts`): compaction, overlap, bounds, idempotence, keyboard moves and resizes, deriving for an old board, pointer snapping, automatic arrangement and each fallback.
 - Web tests (`boardGrid.test.tsx`, `review.test.tsx`): keyboard move and resize with the live sentence and the saved body, one undoable step per change, undo of the first change, a refused undo, undo of a removal, arrange and its fallback, the reviewer's layout.
 - Go tests: round trip and layout travelling with the panel, refusals changing nothing, the guards, the frozen copy (including the run whitelist), the route and its 409, the reviewer listener having no route, the migration, the schema snapshot.
-- End to end (`zzzzzz-board-grid.spec.ts`): drag and resize with the mouse, keyboard, undo, reload, presentation, print, the reviewer's page, 390 px stacking, axe.
+- End to end (`board-grid.spec.ts`): drag and resize with the mouse, keyboard, undo, reload, presentation, print, the reviewer's page, 390 px stacking, axe.
 
 ## Rollback / Migration
 

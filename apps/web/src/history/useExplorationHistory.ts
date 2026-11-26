@@ -3,6 +3,7 @@ import { addStep, getStep, listHistory } from "../api/history";
 import type { ExplorationStep } from "../api/history";
 import type { Scene } from "../scene/scene";
 import { StepRecorder } from "./recorder";
+import { isAbort } from "../api/http";
 
 /** What stops a step being continued: the datasets its scene draws that the catalog no longer has. */
 export function missingDatasets(scene: Scene, have: (id: number) => boolean): number[] {
@@ -70,7 +71,7 @@ export function useExplorationHistory({ projectId, scene, datasetName, haveDatas
         setLoaded(true);
       })
       .catch((e: unknown) => {
-        if (e instanceof DOMException && e.name === "AbortError") return;
+        if (isAbort(e)) return;
         setError(e instanceof Error ? `The history could not be read: ${e.message}` : "The history could not be read.");
         setLoaded(true);
       });

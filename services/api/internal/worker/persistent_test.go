@@ -286,3 +286,38 @@ func TestRequestIDInContextReachesTheWorkerAndOnlyAsAPlainToken(t *testing.T) {
 		t.Fatalf("no id expected: %s", h)
 	}
 }
+
+// A venv's python3 reaches the venv's packages only when started by its own path. The worker environment has a minimal PATH, so a
+// bare "python3" from the API's PATH must be started by the path it was found at.
+func TestWorkerStartsTheInterpreterFoundOnTheAPIsPath(t *testing.T) {
+	real, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 not available")
+	}
+	venv := t.TempDir()
+	if err := os.Mkdir(filepath.Join(venv, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(venv, "bin", "python3")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(venv, "pyvenv.cfg"), []byte("home = "+filepath.Dir(real)+"\ninclude-system-site-packages = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(t.TempDir(), "which.py")
+	prog := "import sys\nfor line in sys.stdin.buffer:\n    sys.stdout.buffer.write(b'{\"ok\":true,\"nbytes\":%d}\\n' % len(sys.prefix) + sys.prefix.encode()); sys.stdout.flush()\n"
+	if err := os.WriteFile(script, []byte(prog), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Join(venv, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	p := &Persistent{Command: []string{"python3", "-P", script}, Timeout: 5 * time.Second, Load: NewLoad(Budgets{Interactive: 1, Heavy: 1, Background: 1})}
+	t.Cleanup(p.Close)
+	r, err := do(p, "ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := filepath.EvalSymlinks(venv)
+	if got, _ := filepath.EvalSymlinks(string(r.Payload)); got != want {
+		t.Fatalf("the worker ran with prefix %q, want the venv %q", r.Payload, want)
+	}
+}

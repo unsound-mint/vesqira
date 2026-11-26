@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { ApiError } from "../api/http";
+import { errorMessage } from "../api/http";
 import { ROLES, createInvitation, listMembers, removeMember, revokeInvitation, roleName, setMemberRole } from "../api/workspaces";
 import type { InvitationCreated, MemberList, Role } from "../api/workspaces";
 import { getAccessOverview, setBlockedLabels } from "../api/access";
-import { Button, Checkbox, Input, LinkButton, Select } from "../ui";
+import { Button, Checkbox, Input, LinkButton, Select, formatDay } from "../ui";
 import { useCan } from "./permissions";
 import s from "./Account.module.css";
 
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
-const day = (iso: string) => iso.slice(0, 10);
 
 /**
  * The current workspace's members (ADR 0050 slice 3): everyone sees who is in it and with which role; a Maintainer invites
@@ -20,13 +18,13 @@ export function MembersPage({ myRole }: { myRole: string }) {
   const can = useCan();
   const [list, setList] = useState<MemberList | null>(null);
   const [error, setError] = useState("");
-  const refresh = useCallback(() => listMembers().then(setList, (e) => setError(message(e))), []);
+  const refresh = useCallback(() => listMembers().then(setList, (e) => setError(errorMessage(e))), []);
   useEffect(() => {
     void refresh();
   }, [refresh]);
   const act = (p: Promise<unknown>) => {
     setError("");
-    void p.then(refresh, (e) => setError(message(e)));
+    void p.then(refresh, (e) => setError(errorMessage(e)));
   };
   const manage = can("member.manage");
   const invitable = ROLES.filter((r) => myRole === "owner" || r.role === "viewer" || r.role === "researcher");
@@ -59,7 +57,7 @@ export function MembersPage({ myRole }: { myRole: string }) {
                     </Select>
                   ) : roleName(m.role)}
                 </td>
-                <td>{day(m.since)}</td>
+                <td>{formatDay(m.since)}</td>
                 {manage ? (
                   <td>
                     <Button variant="ghost" onClick={() => { if (confirm(`Remove ${m.name} from ${list.workspace.name}? What they made stays, under their name.`)) act(removeMember(m.accountId)); }}>Remove</Button>
@@ -92,12 +90,12 @@ export function MembersPage({ myRole }: { myRole: string }) {
 function PublishingPolicy({ workspaceId, onError }: { workspaceId: number; onError: (m: string) => void }) {
   const [blocked, setBlocked] = useState<string[] | null>(null);
   useEffect(() => {
-    getAccessOverview().then((o) => setBlocked(o.blockedLabels), (e) => onError(message(e)));
+    getAccessOverview().then((o) => setBlocked(o.blockedLabels), (e) => onError(errorMessage(e)));
   }, [onError]);
   if (!blocked) return null;
   const toggle = (l: "collaboration" | "unreleased", on: boolean) => {
     const next = (["collaboration", "unreleased"] as const).filter((x) => (x === l ? on : blocked.includes(x)));
-    setBlockedLabels(workspaceId, [...next]).then((r) => setBlocked(r.blockedLabels), (e) => onError(message(e)));
+    setBlockedLabels(workspaceId, [...next]).then((r) => setBlocked(r.blockedLabels), (e) => onError(errorMessage(e)));
   };
   return (
     <section className={s.card} aria-labelledby="policy-h">
@@ -121,7 +119,7 @@ function Invite({ roles, list, onChange, onError }: { roles: { role: Role; label
       setMade(c);
       setNote("");
       onChange();
-    }, (err) => onError(message(err)));
+    }, (err) => onError(errorMessage(err)));
   };
   return (
     <section className={s.card} aria-labelledby="invite-h">
@@ -148,8 +146,8 @@ function Invite({ roles, list, onChange, onError }: { roles: { role: Role; label
               <tr key={i.id}>
                 <td>{roleName(i.role)}</td>
                 <td>{i.note}</td>
-                <td>{day(i.expiresAt)}</td>
-                <td><Button variant="ghost" onClick={() => void revokeInvitation(i.id).then(onChange, (e) => onError(message(e)))}>Revoke</Button></td>
+                <td>{formatDay(i.expiresAt)}</td>
+                <td><Button variant="ghost" onClick={() => void revokeInvitation(i.id).then(onChange, (e) => onError(errorMessage(e)))}>Revoke</Button></td>
               </tr>
             ))}
           </tbody>

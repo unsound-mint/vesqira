@@ -25,7 +25,10 @@ export function segments(x: number[], y: number[]): string[][] {
   let cur: string[] = [];
   for (let i = 0; i < x.length; i++) {
     if (Number.isFinite(y[i]!) && Number.isFinite(x[i]!)) cur.push(`${x[i]!.toFixed(2)},${y[i]!.toFixed(2)}`);
-    else if (cur.length) (out.push(cur), (cur = []));
+    else if (cur.length) {
+      out.push(cur);
+      cur = [];
+    }
   }
   if (cur.length) out.push(cur);
   return out;

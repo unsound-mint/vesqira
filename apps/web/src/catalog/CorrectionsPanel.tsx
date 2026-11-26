@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import type { Dataset } from "../api/catalog";
-import { ApiError } from "../api/http";
+import { errorMessage } from "../api/http";
 import {
   ACTION_TEXT, correctableKeywords, importSidecar, listCorrections, previewCorrection, previewSidecar, saveCorrection, shiftArcsec, sidecarURL, textKeyword, valueText,
 } from "../api/corrections";
 import type { CorrectionChange, CorrectionCoords, CorrectionImpact, CorrectionInput, CorrectionList, CorrectionPreview, CorrectionRecord, SidecarPreview } from "../api/corrections";
-import { Button, Input, Select } from "../ui";
+import { Button, Input, Select, formatWhen } from "../ui";
 import { TierBadge } from "../ui/TierBadge";
 import s from "./CorrectionsPanel.module.css";
 
@@ -16,8 +16,6 @@ type Pending =
   | { kind: "sidecar"; doc: unknown; name: string };
 
 const deg = (v: number | null | undefined) => (v === null || v === undefined ? "—" : v.toFixed(6));
-const day = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-const message = (e: unknown, fallback: string) => (e instanceof ApiError || e instanceof Error ? e.message : fallback);
 
 /** What one record changed, keyword by keyword: "CRVAL2 2 → 2.05 (file 2)". A null after means back to the file's own value. */
 function ChangeList({ changes }: { changes: CorrectionChange[] }) {
@@ -127,7 +125,7 @@ export function CorrectionsPanel({ dataset, onChanged }: { dataset: Dataset; onC
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(() => {
-    listCorrections(id).then((l) => { setList(l); setError(null); }).catch((e: unknown) => setError(message(e, "Could not read the corrections.")));
+    listCorrections(id).then((l) => { setList(l); setError(null); }).catch((e: unknown) => setError(errorMessage(e, "Could not read the corrections.")));
   }, [id]);
   useEffect(() => { setList(null); load(); }, [load]);
 
@@ -170,7 +168,7 @@ export function CorrectionsPanel({ dataset, onChanged }: { dataset: Dataset; onC
     try {
       setPreview(p.kind === "sidecar" ? await previewSidecar(id, p.doc) : await previewCorrection(id, { ...p.input, reason: reason.trim() || "preview only", source: source.trim() }));
     } catch (e) {
-      setError(message(e, "Could not show the effect."));
+      setError(errorMessage(e, "Could not show the effect."));
     }
     setBusy(false);
   }
@@ -187,7 +185,7 @@ export function CorrectionsPanel({ dataset, onChanged }: { dataset: Dataset; onC
       load();
       onChanged?.();
     } catch (e) {
-      setError(message(e, "The correction was not saved."));
+      setError(errorMessage(e, "The correction was not saved."));
     }
     setBusy(false);
   }
@@ -291,7 +289,7 @@ export function CorrectionsPanel({ dataset, onChanged }: { dataset: Dataset; onC
 
       {error ? <p role="alert" className={s.err}>{error}</p> : null}
 
-      <History records={list?.history ?? []} busy={busy} onRevert={(r) => void show({ kind: "input", input: { action: "revert", reverts: r.id }, title: `Revert “${ACTION_TEXT[r.action].toLowerCase()}” of ${day(r.at)}` })} />
+      <History records={list?.history ?? []} busy={busy} onRevert={(r) => void show({ kind: "input", input: { action: "revert", reverts: r.id }, title: `Revert “${ACTION_TEXT[r.action].toLowerCase()}” of ${formatWhen(r.at)}` })} />
 
       <div className={s.actions}>
         {list && list.history.length > 0 ? <a className={s.link} href={sidecarURL(id)} download>Export corrections (JSON)</a> : null}
@@ -316,7 +314,7 @@ function History({ records, busy, onRevert }: { records: CorrectionRecord[]; bus
           <li key={r.id} className={s.record}>
             <div className={s.row}>
               <strong>{ACTION_TEXT[r.action]}</strong>
-              <span className={s.file}>{day(r.at)} · {r.author === "user" ? "by you" : r.author}</span>
+              <span className={s.file}>{formatWhen(r.at)} · {r.author === "user" ? "by you" : r.author}</span>
               {r.stale ? <span className={s.warn}>made for an earlier version of the file</span> : null}
             </div>
             <ChangeList changes={r.changes} />

@@ -195,7 +195,8 @@ func TestSweepPreviewCountsAndEstimatesFromTheBase(t *testing.T) {
 	e := newWatchEnv(t)
 	req := e.sweepRequest("pv", p("dn", "8", "16"), p("ker", "2", "4"))
 	base, _ := e.jobs.Get(int64(req["baseJobId"].(int64)))
-	e.jobs.SetState(base.ID, "completed", "")
+	e.jobs.MarkSubmitted(base.ID, "1")
+	e.jobs.ApplyStatus(base.ID, jobs.StateCompleted, "")
 	e.jobs.SetUsage(base.ID, jobs.Usage{ElapsedSeconds: 600, State: "COMPLETED", Unsupported: []string{}})
 	r, b := postJSON(t, e.api("/api/sweeps/preview"), req)
 	if r.StatusCode != 200 {

@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError } from "../api/http";
+import { errorMessage } from "../api/http";
 import { archivePushed, getPushed, listPushed, matchText, pushedAssetURL } from "../api/push";
 import type { PushedItem, PushedSummary } from "../api/push";
-import { Button, LinkButton } from "../ui";
+import { Button, LinkButton, formatWhen } from "../ui";
 import { useCan } from "../account/permissions";
 import s from "../account/Account.module.css";
 
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
-const when = (iso: string) => iso.slice(0, 16).replace("T", " ");
 
 /**
  * What members pushed from their own computers to this workspace (ADR 0066 section 2): the newest version of each item, its
@@ -19,11 +17,11 @@ export function PushedPage() {
   const [items, setItems] = useState<PushedSummary[]>([]);
   const [open, setOpen] = useState<PushedItem | null>(null);
   const [error, setError] = useState("");
-  const refresh = useCallback(() => listPushed().then((r) => setItems(r.items), (e) => setError(message(e))), []);
+  const refresh = useCallback(() => listPushed().then((r) => setItems(r.items), (e) => setError(errorMessage(e))), []);
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  const show = (id: number) => void getPushed(id).then(setOpen, (e) => setError(message(e)));
+  const show = (id: number) => void getPushed(id).then(setOpen, (e) => setError(errorMessage(e)));
   const d = open?.item;
   return (
     <main className={`${s.page} ${s.wide}`}>
@@ -42,8 +40,8 @@ export function PushedPage() {
                   <td><Button variant="ghost" onClick={() => show(x.id)}>{x.title}</Button></td>
                   <td>{x.kind}</td>
                   <td>{x.pushedByName}</td>
-                  <td>{when(x.pushedAt)}</td>
-                  <td>{can("pushed.archive") ? <Button onClick={() => void archivePushed(x.id).then(refresh, (e) => setError(message(e)))}>Archive</Button> : null}</td>
+                  <td>{formatWhen(x.pushedAt)}</td>
+                  <td>{can("pushed.archive") ? <Button onClick={() => void archivePushed(x.id).then(refresh, (e) => setError(errorMessage(e)))}>Archive</Button> : null}</td>
                 </tr>
               ))}
             </tbody>
@@ -53,7 +51,7 @@ export function PushedPage() {
       {d ? (
         <section className={s.card} aria-label={`Pushed ${d.kind}: ${d.title}`}>
           <h2 className={s.h2}>{d.title}</h2>
-          <p className={s.note}>{d.kind}, pushed by {open.pushedByName} at {when(d.pushedAt)}{d.supersededBy ? "; a newer version has been pushed since" : ""}. A frozen copy: it is never edited here.</p>
+          <p className={s.note}>{d.kind}, pushed by {open.pushedByName} at {formatWhen(d.pushedAt)}{d.supersededBy ? "; a newer version has been pushed since" : ""}. A frozen copy: it is never edited here.</p>
           {d.item.omitted ? <p className={s.note}>{d.item.omitted} run setting(s) naming a machine, an account or an address were left out on the pusher&apos;s computer.</p> : null}
           {d.item.assets.slice(0, 12).map((sha) => <img key={sha} src={pushedAssetURL(d.id, sha)} alt={`Picture of ${d.title}`} style={{ maxWidth: "100%", height: "auto" }} />)}
           {d.references.length ? (
@@ -66,7 +64,7 @@ export function PushedPage() {
             <>
               <h3 className={s.h2}>Versions</h3>
               {d.lineageTotal > d.lineage.length ? <p className={s.note}>The newest {d.lineage.length} of {d.lineageTotal} pushes.</p> : null}
-              <ol>{d.lineage.map((v, i) => <li key={`${i}-${v.id}`}><Button variant="ghost" onClick={() => show(v.id)}>{when(v.pushedAt)}</Button>{i === d.lineage.length - 1 ? " (current)" : ""}</li>)}</ol>
+              <ol>{d.lineage.map((v, i) => <li key={`${i}-${v.id}`}><Button variant="ghost" onClick={() => show(v.id)}>{formatWhen(v.pushedAt)}</Button>{i === d.lineage.length - 1 ? " (current)" : ""}</li>)}</ol>
             </>
           ) : null}
         </section>

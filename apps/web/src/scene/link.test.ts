@@ -137,10 +137,10 @@ describe("the channel in the other map", () => {
 });
 
 describe("what the link pill states", () => {
-  const ready = (m: SkyMap): SkyState => ({ status: "ready", refused: null, map: m });
-  const chReady: ChannelState = { status: "ready", refused: null, map: channels() };
+  const ready = (m: SkyMap): SkyState => ({ status: "ready", map: m });
+  const chReady: ChannelState = { status: "ready", map: channels() };
   it("same grid keeps its words", () => {
-    expect(linkPills(compareGroup(true)!, { status: "idle", refused: null, map: null }, { status: "idle", refused: null, map: null })).toEqual([{ text: "Same grid: cursor and channel are linked", tone: "ok" }]);
+    expect(linkPills(compareGroup(true)!, { status: "idle" }, { status: "idle" })).toEqual([{ text: "Same grid: cursor and channel are linked", tone: "ok" }]);
     const view = { ...compareGroup(true)!, facets: { cursor: false, channel: false, view: true } };
     expect(linkPills(view, ready(sky()), chReady)[0]!.text).toBe("Same grid: view is linked");
   });
@@ -150,7 +150,7 @@ describe("what the link pill states", () => {
     expect(g.facets).toEqual({ cursor: true, channel: false, view: false });
     expect(links(g, "channel")).toBe(false);
     expect(links(g, "cursor")).toBe(true);
-    const idle = { status: "idle" as const, refused: null, map: null };
+    const idle = { status: "idle" as const };
     expect(linkPills(g, idle, idle)).toEqual([{ text: `Same grid: cursor linked; channel link refused: ${why}`, tone: "warn" }]);
     const both = linkGroup({ ...defaultPrefs(), facets: { cursor: true, channel: true, view: true } }, true, why)!;
     expect(linkPills(both, idle, idle)[0]!.text).toBe(`Same grid: cursor and view linked; channel link refused: ${why}`);
@@ -170,14 +170,14 @@ describe("what the link pill states", () => {
     expect(rough.text).toContain("approximate: up to 1.23 px");
   });
   it("a refused facet says why, and does not hide the other", () => {
-    const refused: ChannelState = { status: "refused", refused: "spectral frames differ (LSRK vs TOPOCENT); changing frame is not offered", map: null };
+    const refused: ChannelState = { status: "refused", refused: "spectral frames differ (LSRK vs TOPOCENT); changing frame is not offered" };
     const pills = linkPills(wcsGroup({ cursor: true, channel: true, view: false }), ready(sky()), refused);
     expect(pills.map((p) => p.text)).toEqual([
       "Linked by WCS: frames ICRS↔Galactic (astropy), cursor within 0.03 px in this view",
       "Channel link refused: spectral frames differ (LSRK vs TOPOCENT); changing frame is not offered",
     ]);
     expect(pills[1]!.tone).toBe("warn");
-    const skyRefused: SkyState = { status: "refused", refused: "the second map has no celestial WCS", map: null };
+    const skyRefused: SkyState = { status: "refused", refused: "the second map has no celestial WCS" };
     expect(linkPills(wcsGroup({ cursor: true, channel: false, view: false }), skyRefused, chReady)[0]!.text).toBe("Cursor link refused: the second map has no celestial WCS");
   });
 });

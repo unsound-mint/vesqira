@@ -145,6 +145,7 @@ func (s *Server) windowedRead(w http.ResponseWriter, r *http.Request, src catalo
 // windowOf is the window a cache key carries, as the object the worker takes.
 func windowOf(win string) map[string]any {
 	var m map[string]any
+	// win is empty (no window) or JSON that windowedRead marshalled; either way a nil map means no window
 	_ = json.Unmarshal([]byte(win), &m)
 	return m
 }
@@ -483,6 +484,7 @@ func subsetSummary(rec derived.Record) subsetSummaryOf {
 		} `json:"subset"`
 		ReuseKey string `json:"reuseKey"`
 	}
+	// an unreadable summary names no subset, so no request reuses the file
 	_ = json.Unmarshal(rec.Summary, &sm)
 	return subsetSummaryOf{ID: sm.Subset.ID, Version: sm.Subset.Version, ReuseKey: sm.ReuseKey}
 }
@@ -559,7 +561,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if in := src.Interpretation; in != nil && in.Kind == "axial_orientation" && in.Stale {
+	if in := src.Interpretation; in.IsAxial() && in.Stale {
 		fail(w, 409, "the file changed since you declared it as an orientation map; declare it again to confirm the unit and frame still apply, then write the subset")
 		return
 	}
@@ -638,18 +640,23 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 	}
 	params, _ := json.Marshal(pm)
 	summary := map[string]any{}
-	_ = json.Unmarshal(res.Summary, &summary)
+	if err := json.Unmarshal(res.Summary, &summary); err != nil && len(res.Summary) > 0 {
+		log.Printf("subsets: the worker summary of %s cannot be read, so the record keeps only the subset keys: %v", nd.Name, err)
+	}
+	if summary == nil { // "summary": null decodes to a nil map without an error
+		summary = map[string]any{}
+	}
 	summary["subset"] = map[string]any{"id": sub.ID, "version": cur.Version}
 	summary["reuseKey"] = reuseKey(sub.ID, cur.Version, src, carry.key())
 	sraw, _ := json.Marshal(summary)
 	if err := s.Derived.Save(derived.Record{DatasetID: nd.ID, Op: "subset", Params: params, Sources: []int64{src.ID}, Summary: sraw, Software: res.Software}); err != nil {
 		log.Printf("derived: %v", err)
 	}
-	if in := src.Interpretation; in != nil && in.Kind == "axial_orientation" && in.SkyFrame != nil {
+	if in := src.Interpretation; in.IsAxial() && in.SkyFrame != nil {
 		// the angles are stated in another celestial frame than the grid's (the file's header says so, and the window's header keeps those
 		// cards): the operation does not restate that, so the window is left undeclared and the file's own declaration is offered for it
 		log.Printf("subsets: %s is stated in the %s frame; the window is not declared by the operation", src.Name, *in.SkyFrame)
-	} else if in != nil && in.Kind == "axial_orientation" {
+	} else if in.IsAxial() {
 		// a window does not turn angles (a step keeps source pixels, nothing is averaged), so the file is the same kind of map, said by the
 		// operation and not by the researcher; its reliability map is another file and is not carried
 		out := catalog.Interpretation{Kind: in.Kind, Unit: in.Unit, Frame: in.Frame, Quantity: in.Quantity, DeclaredBy: analysisAuthor}
@@ -667,6 +674,7 @@ func (s *Server) materialiseSubset(w http.ResponseWriter, r *http.Request) {
 func reviewerDefinition(d subsets.Definition) map[string]any {
 	raw, _ := json.Marshal(d)
 	var m map[string]any
+	// raw was just marshalled from a struct, so it is a valid JSON object
 	_ = json.Unmarshal(raw, &m)
 	if d.Region != nil {
 		m["region"] = map[string]any{"name": d.Region.Name}

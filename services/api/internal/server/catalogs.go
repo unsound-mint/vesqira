@@ -196,6 +196,7 @@ func declarationArg(d catalog.Dataset) (map[string]any, int, string) {
 	}
 	b, _ := json.Marshal(c)
 	var m map[string]any
+	// b was just marshalled from a struct, so it is a valid JSON object
 	_ = json.Unmarshal(b, &m)
 	for _, k := range []string{"declaredBy", "declaredAt", "stale", "tier", "mappingVersion"} {
 		delete(m, k)

@@ -82,6 +82,7 @@ func (c *apiClient) call(method, path string, in, out any) error {
 			Error   string          `json:"error"`
 			Current json.RawMessage `json:"current"`
 		}
+		// an error body that is not JSON is shown as plain text below
 		_ = json.Unmarshal(b, &e)
 		msg := e.Error
 		if msg == "" {

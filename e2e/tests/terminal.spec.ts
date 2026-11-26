@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "../fixtures";
 import { API, REVIEW } from "../ports";
 
 // ADR 0029, step 2: the integrated terminal, through the built app, the Vite preview proxy (a WebSocket upgrade that must

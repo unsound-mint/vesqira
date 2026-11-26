@@ -794,7 +794,7 @@ func proposedPsi(d catalog.Dataset, rel *int64) (catalog.Interpretation, bool) {
 		return catalog.Interpretation{}, false
 	}
 	o := d.OrientationHeader.Orientation
-	return catalog.Interpretation{Kind: "axial_orientation", Unit: o.Unit, ReliabilityID: rel, Frame: &o.Frame, Quantity: o.Quantity, DeclaredBy: o.Profile}, true
+	return catalog.Interpretation{Kind: catalog.AxialOrientation, Unit: o.Unit, ReliabilityID: rel, Frame: &o.Frame, Quantity: o.Quantity, DeclaredBy: o.Profile}, true
 }
 
 // orientationContradiction is the sentence that refuses an import when the orientation map's own header cards and the project
@@ -841,7 +841,7 @@ func declaredOrientation(prof *runs.Profile, d catalog.Dataset, rel *int64) (cat
 	if decl == nil || d.OrientationHeader != nil {
 		return catalog.Interpretation{}, false
 	}
-	in := catalog.Interpretation{Kind: "axial_orientation", Unit: decl.Unit, ReliabilityID: rel, Frame: &decl.Frame, DeclaredBy: catalog.ProjectProfileAuthorPrefix + prof.Label()}
+	in := catalog.Interpretation{Kind: catalog.AxialOrientation, Unit: decl.Unit, ReliabilityID: rel, Frame: &decl.Frame, DeclaredBy: catalog.ProjectProfileAuthorPrefix + prof.Label()}
 	if decl.Quantity != "" {
 		in.Quantity = &decl.Quantity
 	}

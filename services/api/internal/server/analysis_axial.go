@@ -33,7 +33,7 @@ type axialRun struct {
 // true when the analysis will run on the input's host, where the reliability map is read by its path there.
 func (s *Server) axialAnalysis(ctx context.Context, op string, d catalog.Dataset, remote bool) (*axialRun, int, string) {
 	in := d.Interpretation
-	if in == nil || in.Kind != "axial_orientation" {
+	if !in.IsAxial() {
 		return nil, 0, ""
 	}
 	switch op {
@@ -144,7 +144,7 @@ func (s *Server) reliabilityPath(ctx context.Context, d catalog.Dataset, remote 
 	if rel.HostID != d.HostID {
 		return "", 409, "the reliability map is on another host: both maps must be on the same machine to be used together"
 	}
-	if rel.Interpretation != nil && rel.Interpretation.Kind == "axial_orientation" {
+	if rel.Interpretation.IsAxial() {
 		return "", 409, "the declared reliability dataset is itself declared as angles"
 	}
 	if why, err := compat.Grids(effectiveHeader(d), effectiveHeader(rel)); err != nil || len(why) > 0 {
@@ -169,11 +169,13 @@ func (s *Server) finishAxialResult(ws workspace.ID, res analysisOutcome, nd cata
 		Axial           bool `json:"axial"`
 		ReliabilityFile bool `json:"reliability_file"`
 	}
-	_ = json.Unmarshal(res.Summary, &sum)
+	if err := json.Unmarshal(res.Summary, &sum); err != nil && len(res.Summary) > 0 {
+		log.Printf("analysis: the summary of %s cannot be read, so its result is not declared axial: %v", nd.Name, err)
+	}
 	if !sum.Axial || a == nil {
 		return nd
 	}
-	out := catalog.Interpretation{Kind: "axial_orientation", Unit: a.interp.Unit, Frame: a.interp.Frame, Quantity: a.interp.Quantity, DeclaredBy: analysisAuthor}
+	out := catalog.Interpretation{Kind: catalog.AxialOrientation, Unit: a.interp.Unit, Frame: a.interp.Frame, Quantity: a.interp.Quantity, DeclaredBy: analysisAuthor}
 	if sum.ReliabilityFile {
 		rd, code, msg := register(relPath)
 		if code != 0 {

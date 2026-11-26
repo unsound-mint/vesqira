@@ -143,7 +143,8 @@ export function RunsView({ runs, jobs, hostName, state, onState, onOpenRun, onBa
   // whether each offered conversion will work is asked of the worker in the background; the plot is drawn without waiting for it
   const convertible = useConvertibility(drawnModel?.offers ?? []);
   const refusals = Object.fromEntries((drawnModel?.offers ?? []).flatMap((o) => { const c = convertible(o); return c.state === "no" ? [[o.unit, c.reason] as const] : []; }));
-  const model = useMemo(() => (drawnModel ? withRefusals(drawnModel, refusals) : null), [drawnModel, JSON.stringify(refusals)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const refusalsKey = JSON.stringify(refusals);
+  const model = useMemo(() => (drawnModel ? withRefusals(drawnModel, JSON.parse(refusalsKey) as Record<string, string>) : null), [drawnModel, refusalsKey]);
   const mKeys = useMemo(() => metricKeys(runs), [runs]);
   const pKeys = useMemo(() => paramKeys(runs), [runs]);
   const drawn = model ? new Set(model.panels.flatMap((p) => p.series.flatMap((x) => x.points.map((q) => q.runId)))) : new Set<number>();

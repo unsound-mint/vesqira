@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -665,5 +666,36 @@ func TestWindowEchoMustMatchTheWindowSent(t *testing.T) {
 	}
 	if !windowEchoed([]byte(`{"window":{"x0":0,"y0":0,"step":1,"c0":0,"c1":63,"width":32,"height":24}}`), `{}`) {
 		t.Error("an empty window is the whole source")
+	}
+}
+
+// A worker may answer "summary": null. The file is still written and recorded; the record holds the subset keys only.
+func TestSubsetMaterialiseSurvivesAWorkerSummaryOfNull(t *testing.T) {
+	t.Parallel()
+	nullSummary := func(s *Server, _ *catalog.Store) {
+		wrapper := filepath.Join(t.TempDir(), "null_summary.py")
+		prog := "import json, subprocess, sys\n" +
+			"p = subprocess.run([sys.executable, '-P', " + strconv.Quote(s.Analysis.Script) + "] + sys.argv[1:], capture_output=True, text=True)\n" +
+			"out = json.loads(p.stdout)\nout['summary'] = None\nprint(json.dumps(out))\n"
+		if err := os.WriteFile(wrapper, []byte(prog), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s.Analysis.Script = wrapper
+	}
+	e := newSubEnv(t, nil, nullSummary)
+	src := e.register("hi_cube.fits")
+	sub := e.mustCreate(src.ID, def(map[string]any{"step": 1}))
+	code, b := e.call("POST", fmt.Sprintf("/api/subsets/%d/materialise", sub.ID), map[string]any{})
+	if code != 201 {
+		t.Fatalf("materialise with a null worker summary: %d %s", code, b)
+	}
+	var d struct {
+		Summary map[string]any `json:"summary"`
+	}
+	if err := json.Unmarshal(b, &d); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := d.Summary["subset"]; !ok || d.Summary["reuseKey"] == nil {
+		t.Fatalf("the record lost the subset keys: %s", b)
 	}
 }

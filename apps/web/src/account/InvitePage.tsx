@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { ApiError } from "../api/http";
+import { errorMessage } from "../api/http";
 import { acceptInvitation, joinWithInvitation, peekInvitation, roleName } from "../api/workspaces";
 import type { InvitationPeek } from "../api/workspaces";
-import { Button, Input, LinkButton } from "../ui";
+import { Button, Input, LinkButton, formatDay } from "../ui";
 import s from "./Account.module.css";
 
-const message = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.");
 
 /**
  * Accepting an invitation (ADR 0050 slice 3). Someone without an account chooses a name, a username and a password, then
@@ -20,7 +19,7 @@ export function InvitePage({ token, signedIn }: { token: string; signedIn: boole
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    void peekInvitation(token).then(setPeek, (e) => setError(message(e)));
+    void peekInvitation(token).then(setPeek, (e) => setError(errorMessage(e)));
   }, [token]);
   const done = () => {
     history.replaceState(null, "", location.pathname);
@@ -30,7 +29,7 @@ export function InvitePage({ token, signedIn }: { token: string; signedIn: boole
     e.preventDefault();
     setBusy(true);
     setError("");
-    acceptInvitation({ token, name, username, password }).then(done, (err) => setError(message(err))).finally(() => setBusy(false));
+    acceptInvitation({ token, name, username, password }).then(done, (err) => setError(errorMessage(err))).finally(() => setBusy(false));
   };
   return (
     <main className={s.page}>
@@ -39,11 +38,11 @@ export function InvitePage({ token, signedIn }: { token: string; signedIn: boole
       {peek ? (
         <section className={s.card}>
           <p>
-            You are invited to <strong>{peek.workspace}</strong> as {roleName(peek.role)}.{peek.note ? ` (${peek.note})` : ""} The link works once, until {peek.expiresAt.slice(0, 10)}.
+            You are invited to <strong>{peek.workspace}</strong> as {roleName(peek.role)}.{peek.note ? ` (${peek.note})` : ""} The link works once, until {formatDay(peek.expiresAt)}.
           </p>
           {signedIn ? (
             <div className={s.row}>
-              <Button variant="primary" disabled={busy} onClick={() => { setBusy(true); void joinWithInvitation(token).then(done, (e) => setError(message(e))).finally(() => setBusy(false)); }}>Join {peek.workspace}</Button>
+              <Button variant="primary" disabled={busy} onClick={() => { setBusy(true); void joinWithInvitation(token).then(done, (e) => setError(errorMessage(e))).finally(() => setBusy(false)); }}>Join {peek.workspace}</Button>
               <LinkButton href="#/">Not now</LinkButton>
             </div>
           ) : (

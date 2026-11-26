@@ -4,9 +4,8 @@ import type { Spectrum } from "../api/planes";
 import { getComponents, indexRohsa, listRohsaRuns } from "../api/rohsa";
 import type { Components, RohsaIndexState, RohsaRun } from "../api/rohsa";
 import type { Pixel, Viewer } from "./useViewer";
+import { errorMessage, isAbort } from "../api/http";
 
-const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
-const message = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 
 /**
  * The Gaussian components of a ROHSA run at one pixel of the open dataset (ADR 0046). The pixel is the pinned one, else the
@@ -59,7 +58,7 @@ export function useComponents(v: Viewer) {
         setIndex(st);
         if (st.state !== "building") return;
       }
-    })().catch((e: unknown) => !isAbort(e) && setIndexError(message(e, "Could not index the .dat.")));
+    })().catch((e: unknown) => !isAbort(e) && setIndexError(errorMessage(e, "Could not index the .dat.")));
     return () => ac.abort();
   }, [enabled, datasetId, runId]);
 
@@ -89,7 +88,7 @@ export function useComponents(v: Viewer) {
           if (isAbort(e)) return;
           setComps(null);
           setData(null);
-          setError(message(e, "Could not read the components."));
+          setError(errorMessage(e, "Could not read the components."));
           setLoading(false);
         });
     }, 120);

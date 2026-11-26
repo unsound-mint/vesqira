@@ -683,24 +683,22 @@ func (s *Server) freeze(ws workspace.ID, rep reports.Report, space string, withA
 			}
 			var p struct {
 				Run *struct {
-					Dirty  bool `json:"dirty"`
-					Review struct {
-						QC string `json:"qc"`
-					} `json:"review"`
-				} `json:"run"`
-			}
-			_ = json.Unmarshal(fig.Provenance, &p)
-			if p.Run != nil && p.Run.Dirty {
-				f.Warnings = append(f.Warnings, fmt.Sprintf("Figure %q comes from a run made from uncommitted code.", fig.Title))
-			}
-			var pr struct {
-				Run *struct {
+					Dirty  bool         `json:"dirty"`
 					Name   string       `json:"name"`
 					Params []runs.Param `json:"params"`
 				} `json:"run"`
 			}
-			if json.Unmarshal(fig.Provenance, &pr) == nil && pr.Run != nil {
-				if w := identifyingSettings(pr.Run.Name, pr.Run.Params); w != "" {
+			if len(fig.Provenance) > 0 {
+				if err := json.Unmarshal(fig.Provenance, &p); err != nil {
+					p.Run = nil // a run decoded in part would be judged on settings it did not finish reading
+					f.Warnings = append(f.Warnings, fmt.Sprintf("The provenance of figure %q cannot be read, so its code state and run settings could not be checked.", fig.Title))
+				}
+			}
+			if p.Run != nil && p.Run.Dirty {
+				f.Warnings = append(f.Warnings, fmt.Sprintf("Figure %q comes from a run made from uncommitted code.", fig.Title))
+			}
+			if p.Run != nil {
+				if w := identifyingSettings(p.Run.Name, p.Run.Params); w != "" {
 					f.Warnings = append(f.Warnings, w)
 				}
 			}

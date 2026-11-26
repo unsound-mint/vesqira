@@ -1,8 +1,9 @@
 import { defineConfig } from "@playwright/test";
-import { API, DEV, PORTS, PREVIEW, PUBLISH, REVIEW } from "./ports";
+import { DEV, PORTS, PREVIEW, PUBLISH, REVIEW } from "./ports";
 
 // The acceptance walk-through runs against the real API, the real Python worker and the built web app, on
-// generated fixtures only (nothing committed, nothing from anyone's research data).
+// generated fixtures only (nothing committed, nothing from anyone's research data). The API is started per spec file by
+// fixtures.ts; the web servers below only proxy to it.
 const env = {
   VESQIRA_API_PORT: String(PORTS.api),
   VESQIRA_REVIEW_PORT: String(PORTS.review),
@@ -10,8 +11,11 @@ const env = {
 };
 export default defineConfig({
   testDir: "./tests",
+  globalSetup: "./global-setup.ts",
   timeout: 180_000,
   expect: { timeout: 15_000 },
+  // One worker: every spec file restarts the API on the same ports (PORTS) and rewrites the same .run folder, so two workers would
+  // collide. Parallel runs need a port block each (VESQIRA_E2E_PORT_BASE) and a run folder each, which is not built.
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
@@ -24,7 +28,6 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: [
-    { command: "bash ./start-api.sh", env, url: `${API}/api/roots`, timeout: 240_000, reuseExistingServer: false },
     { command: "bash ./start-publish.sh", env, url: `${PUBLISH}/publish-api/ping`, timeout: 240_000, reuseExistingServer: false },
     // the renderer equivalence test imports source modules into a real browser, which only the dev server serves
     { command: `npx vite --port ${PORTS.dev} --strictPort --host 127.0.0.1`, env, cwd: "../apps/web", url: DEV, timeout: 60_000, reuseExistingServer: false },

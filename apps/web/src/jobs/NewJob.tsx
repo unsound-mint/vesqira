@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { Button, Checkbox, Input, PathField, Select } from "../ui";
 import { slurmLimitGloss } from "../ui/duration";
 import { createJob, hostText } from "../api/jobs";
@@ -42,7 +42,7 @@ export function NewJob({ hosts, jobs, templates, onCreated }: { hosts: Host[]; j
 
   // the form follows the template it is drawn from: the name, the starting request and the pin start again with each
   const id = t?.id ?? "";
-  useEffect(() => {
+  const startOver = useEffectEvent(() => {
     if (!t) return;
     setName(`${t.id}-run`);
     setRes(startingRequest(t));
@@ -52,8 +52,8 @@ export function NewJob({ hosts, jobs, templates, onCreated }: { hosts: Host[]; j
     setLoaded(false);
     setVals({});
     setWas({});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  });
+  useEffect(() => startOver(), [id]);
 
   if (hosts.length === 0) return <p className={s.note}>Add a host first (Hosts in the explorer). Jobs run on a host with Slurm, never on the login node itself.</p>;
   if (!t) return <p className={s.note}>{templates === null ? "Loading the tools this app can write jobs for…" : "No tool profile declares a job template."}</p>;

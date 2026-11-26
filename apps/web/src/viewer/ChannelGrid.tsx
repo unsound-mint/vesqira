@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Button, Input, Select } from "../ui";
 import type { Dataset } from "../api/catalog";
 import { createFigure } from "../api/boards";
 import type { Figure } from "../api/boards";
 import { getChannelGrid, getPanel } from "../api/channelmaps";
 import type { ChannelGridPlan, GridPanel } from "../api/channelmaps";
-import { ApiError, newRequestId } from "../api/http";
+import { ApiError, newRequestId, isAbort } from "../api/http";
 import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import type { Plane } from "../api/planes";
 import { lut } from "./colormaps";
@@ -16,7 +16,6 @@ import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import s from "./ChannelGrid.module.css";
 
-const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const NODATA = GRID_NODATA;
 const GRID_COLORMAPS: { id: ColormapId; label: string }[] = [{ id: "viridis", label: "Viridis" }, { id: "inferno", label: "Inferno" }, { id: "gray", label: "Gray" }];
 
@@ -55,6 +54,7 @@ function Panel({ panel, plan, datasetId, shared, cached, onLoaded, colormap, str
   const [data, setData] = useState<Loaded | undefined>(cached);
   const [rid, setRid] = useState<string | null>(null);
   const queued = useQueueReason(want && !data && !error, rid);
+  const loadedEvent = useEffectEvent(onLoaded);
 
   useEffect(() => {
     if (!want || data) return;
@@ -65,21 +65,23 @@ function Panel({ panel, plan, datasetId, shared, cached, onLoaded, colormap, str
       .then((p) => {
         const l = { plane: { head: p.head, data: p.data }, slab: p.slab as Loaded["slab"] };
         setData(l);
-        onLoaded(panel.index, l, null);
+        loadedEvent(panel.index, l, null);
       })
       .catch((e: unknown) => !isAbort(e) && setError(e instanceof ApiError ? e.message : "This panel could not be read."));
     return () => ac.abort(); // a panel that scrolled away, or a plan that changed, stops its read
-  }, [want, data, datasetId, panel, plan.step]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [want, data, datasetId, panel, plan.step]);
 
+  const lo = shared?.lo;
+  const hi = shared?.hi;
   useEffect(() => {
     const c = canvas.current;
-    if (!c || !data || !shared) return;
+    if (!c || !data || lo === undefined || hi === undefined) return;
     const { plane } = data;
     c.width = plane.head.width;
     c.height = plane.head.height;
-    c.getContext("2d")?.putImageData(new ImageData(paintPixels(plane.data, plane.head.width, plane.head.height, shared, lut(colormap), stretch, NODATA) as Uint8ClampedArray<ArrayBuffer>, plane.head.width, plane.head.height), 0, 0);
-    onLoaded(panel.index, data, c);
-  }, [data, shared?.lo, shared?.hi, colormap, stretch]); // eslint-disable-line react-hooks/exhaustive-deps
+    c.getContext("2d")?.putImageData(new ImageData(paintPixels(plane.data, plane.head.width, plane.head.height, { lo, hi }, lut(colormap), stretch, NODATA) as Uint8ClampedArray<ArrayBuffer>, plane.head.width, plane.head.height), 0, 0);
+    loadedEvent(panel.index, data, c);
+  }, [data, panel.index, lo, hi, colormap, stretch]);
 
   const none = data && data.plane.head.stats.finite_count === 0;
   return (
@@ -132,12 +134,13 @@ export function ChannelGrid({ v, dataset }: { v: Viewer; dataset: Dataset }) {
     setLimits(null);
     setCustom({ lo: "", hi: "" });
   }, [dataset.id, channels]);
-  useEffect(() => {
+  const adoptViewerUnit = useEffectEvent(() => {
     if (v.conv.spectral && targets.some((t) => t.unit === v.conv.spectral && t.enabled)) {
       setUnit(v.conv.spectral);
       setConvention(v.conv.convention || "radio");
     }
-  }, [dataset.id, v.offers]); // eslint-disable-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => adoptViewerUnit(), [dataset.id, v.offers]);
 
   const nums = { first: Number(first), last: Number(last), stride: Number(stride), average: Number(average) };
   const bad = [nums.first, nums.last, nums.stride, nums.average].some((n) => !Number.isInteger(n)) || nums.first < 1 || nums.last < nums.first || nums.last > channels || nums.stride < 1 || nums.average < 1 || nums.average > nums.stride
@@ -165,7 +168,7 @@ export function ChannelGrid({ v, dataset }: { v: Viewer; dataset: Dataset }) {
         .finally(() => setPlanning(false));
     }, 200);
     return () => { clearTimeout(t); ac.abort(); setPlanning(false); };
-  }, [dataset.id, nums.first, nums.last, nums.stride, nums.average, unit, convention, needsConvention, limits, channels, bad]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dataset.id, nums.first, nums.last, nums.stride, nums.average, unit, convention, needsConvention, limits, channels, bad]);
 
   const lo = plan?.scale.lo ?? null, hi = plan?.scale.hi ?? null;
   const shared = lo !== null && hi !== null ? { lo, hi } : null;

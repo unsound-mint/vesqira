@@ -241,15 +241,16 @@ export function DisplayControls({ v }: { v: Viewer }) {
   // What the histogram counts: the plane, the region drawn now, or a saved region. A choice that no longer exists means the plane.
   const [histOf, setHistOf] = useState("plane");
   const savedList = v.savedRegions.saved;
-  const drawnIsSaved = v.region !== null && savedList.some((r) => sameRegion(toShape(r), v.region));
+  const region = v.region;
+  const drawnIsSaved = region !== null && savedList.some((r) => sameRegion(toShape(r), region));
   const histScope = useMemo(() => {
     const p = v.plane;
     if (!p) return null;
-    const mk = (name: string, shape: NonNullable<typeof v.region>) => ({ name, shape, width: p.head.width, height: p.head.height, preview: !!p.head.preview });
-    if (histOf === "drawn" && v.region && !drawnIsSaved) return mk("drawn region", v.region);
+    const mk = (name: string, shape: NonNullable<typeof region>) => ({ name, shape, width: p.head.width, height: p.head.height, preview: !!p.head.preview });
+    if (histOf === "drawn" && region && !drawnIsSaved) return mk("drawn region", region);
     const saved = histOf.startsWith("s") ? savedList.find((r) => `s${r.id}` === histOf) : undefined;
     return saved ? mk(saved.name, toShape(saved)) : null;
-  }, [histOf, v.region, drawnIsSaved, savedList, v.plane]);
+  }, [histOf, region, drawnIsSaved, savedList, v.plane]);
   const histValue = histScope ? histOf : "plane";
   const maskedHist = useMaskedHistogram(v.datasetId, v.plane?.head.channel ?? v.channel, histScope?.shape ?? null, stats?.min ?? null, stats?.max ?? null, 64, v.maskUses);
 

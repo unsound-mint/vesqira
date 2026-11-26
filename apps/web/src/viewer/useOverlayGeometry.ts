@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { ApiError } from "../api/catalog";
 import { getOverlayGeometry } from "../api/overlays";
 import { geometryKey, needsGeometry, spacingFor } from "../scene/geometry";
 import type { GeometryEntry, GeometryMap } from "../scene/geometry";
 import type { Scene, SceneOverlay } from "../scene/scene";
+import { isAbort } from "../api/http";
 
 type Want = { o: SceneOverlay; spacing: number | null; key: string };
 const RETRIES = 2;
@@ -29,22 +30,25 @@ export function useOverlayGeometry(scene: Scene | null, scale: number): Geometry
   const signature = wanted.map((w) => `${w.o.id}=${w.key}`).join("\n");
   const baseId = scene?.base.datasetId ?? null;
 
+  // The signature says when what is wanted changed; the effect reads the list as it is then.
+  const wantedNow = useEffectEvent(() => wanted);
   useEffect(() => {
+    const list = wantedNow();
     const prev = current.current;
     const next: Record<string, GeometryEntry> = {};
-    for (const w of wanted) next[w.o.id] = prev[w.o.id]?.key === w.key ? prev[w.o.id]! : { key: w.key, status: "loading" };
+    for (const w of list) next[w.o.id] = prev[w.o.id]?.key === w.key ? prev[w.o.id]! : { key: w.key, status: "loading" };
     current.current = next;
     setMap(next);
     if (baseId === null) return;
     const ac = new AbortController();
     // every entry still being computed is asked for (again, after an abort): the server answers a repeat from its cache.
     // Automatic spacing needs the pane's scale; until the plane is drawn there is none, and the entry stays computing.
-    const pending = wanted.filter((w) => next[w.o.id]!.status === "loading" && !(w.o.kind === "orientation" && w.o.sampling.mode === "auto" && w.spacing === null));
+    const pending = list.filter((w) => next[w.o.id]!.status === "loading" && !(w.o.kind === "orientation" && w.o.sampling.mode === "auto" && w.spacing === null));
     const ask = (w: Want, attempt: number): void => {
       getOverlayGeometry(baseId, w.o, w.spacing, ac.signal)
         .then((g) => settle(w, { key: w.key, status: "ready", g }))
         .catch((e: unknown) => {
-          if (e instanceof DOMException && e.name === "AbortError") return;
+          if (isAbort(e)) return;
           // a refusal (the request or the data) is final; an unreachable or busy worker is asked again, then reported
           const final = e instanceof ApiError && [400, 403, 404, 409, 422].includes(e.status);
           if (!final && attempt < RETRIES) {
@@ -66,7 +70,7 @@ export function useOverlayGeometry(scene: Scene | null, scale: number): Geometry
       retries.forEach(clearTimeout);
       ac.abort();
     };
-  }, [signature, baseId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [signature, baseId]);
 
   return map;
 }

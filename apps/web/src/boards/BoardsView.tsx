@@ -107,7 +107,7 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
     if (!live || boardId === null) return;
     let stopped = false;
     const poll = () => getBoard(boardId).then((b) => { if (!stopped) replaceBoard(b); }).catch(() => undefined); // the next poll tries again
-    poll();
+    void poll();
     const t = setInterval(poll, 30_000);
     return () => { stopped = true; clearInterval(t); };
   }, [live, boardId, replaceBoard]);
@@ -120,15 +120,15 @@ export function BoardsView({ onCompare, newer }: { onCompare?: (datasetIdA: numb
     let stopped = false;
     void Promise.all([listRuns(), listDatasets()]).then(([runs, datasets]) => { if (!stopped) setLookup({ runs, datasets }); }).catch((e: Error) => setErr(e.message));
     return () => { stopped = true; };
-  }, [wantRuns, board?.items.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wantRuns, board?.items.length]);
   // A third tick replaces the oldest one, so a keyboard user never meets a disabled box and has to untick first.
   const tick = (pos: number, on: boolean) => setTicked((cur) => (on ? [...cur.filter((x) => x !== pos), pos].slice(-2) : cur.filter((x) => x !== pos)));
   useEffect(() => {
     setLink(null);
     setTicked([]);
-    if (board) listSnapshots(board.id).then(setSnaps).catch(() => setSnaps([]));
+    if (boardId !== null) listSnapshots(boardId).then(setSnaps).catch(() => setSnaps([]));
     else setSnaps([]);
-  }, [board?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [boardId]);
 
   // Undo and redo of this board's edits (ADR 0057). The stack outlives this screen; publishing and replies are not commands.
   const stack = board ? boardStack(board.id) : null;

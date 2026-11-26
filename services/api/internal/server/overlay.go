@@ -113,7 +113,7 @@ func (s *Server) overlayGeometry(w http.ResponseWriter, r *http.Request) {
 		writeFrameAs(w, rep, "application/vnd.vesqira.geometry")
 		return
 	}
-	axial := ov.Interpretation != nil && ov.Interpretation.Kind == "axial_orientation"
+	axial := ov.Interpretation.IsAxial()
 	switch o.Kind {
 	case "contours":
 		if ovKey.unit != "" {
@@ -170,7 +170,7 @@ func (s *Server) reliabilityFor(r *http.Request, d catalog.Dataset, relID int64)
 	if rel.HostID != d.HostID {
 		return "", cacheKey{}, 409, "the reliability map is on another host: both maps must be on the same machine to be used together"
 	}
-	if rel.Interpretation != nil && rel.Interpretation.Kind == "axial_orientation" {
+	if rel.Interpretation.IsAxial() {
 		return "", cacheKey{}, 409, "the declared reliability dataset is itself declared as angles"
 	}
 	why, err := compat.Grids(effectiveHeader(d), effectiveHeader(rel))

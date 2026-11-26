@@ -262,6 +262,7 @@ func (s *Store) Due(now time.Time) ([]Due, error) {
 			return nil, err
 		}
 		d.Body = []byte(body)
+		// assets is written with json.Marshal; an unreadable column reads as no assets
 		_ = json.Unmarshal([]byte(assets), &d.Assets)
 		out = append(out, d)
 	}

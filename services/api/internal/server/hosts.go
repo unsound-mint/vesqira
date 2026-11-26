@@ -367,10 +367,14 @@ func (s *Server) registerRemoteFile(ctx context.Context, h hosts.Host, p string)
 	if json.Unmarshal(hdr.Head, &meta) != nil {
 		return d, 502, "the host answered unexpectedly"
 	}
-	var size, mtime int64
-	_ = json.Unmarshal(meta["size"], &size)
-	_ = json.Unmarshal(meta["mtime_ns"], &mtime)
-	return s.storeRemoteFile(ctx, h, realPath, size, mtime, meta, nil)
+	var stat struct {
+		Size    int64 `json:"size"`
+		MtimeNS int64 `json:"mtime_ns"`
+	}
+	if json.Unmarshal(hdr.Head, &stat) != nil {
+		return d, 502, "the host answered unexpectedly"
+	}
+	return s.storeRemoteFile(ctx, h, realPath, stat.Size, stat.MtimeNS, meta, nil)
 }
 
 // storeRemoteFile catalogs a remote file whose header report (meta) and stat are known, then records what is known of its

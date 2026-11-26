@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Button, Input, Select } from "../ui";
 import { getPv } from "../api/channelmaps";
 import type { PvDiagram } from "../api/channelmaps";
-import { ApiError, newRequestId } from "../api/http";
+import { ApiError, newRequestId, isAbort } from "../api/http";
 import { QueueNote, useQueueReason } from "../ui/QueueNote";
 import { lut } from "./colormaps";
 import { lineValid, pathLength } from "./region";
@@ -13,7 +13,6 @@ import type { Viewer } from "./useViewer";
 import { EM } from "../catalog/format";
 import s from "./PvPanel.module.css";
 
-const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";
 const NODATA: [[number, number, number], [number, number, number]] = [[27, 34, 44], [85, 98, 117]];
 const num = (v: number) => Number(v.toPrecision(5)).toString();
 
@@ -45,7 +44,7 @@ function PvPlot({ d, v }: { d: PvDiagram; v: Viewer }) {
   const flip = axisFlipped(d.axis);
   const stats = d.head.stats;
   const lo = stats.p01 ?? stats.min ?? null, hi = stats.p99 ?? stats.max ?? null;
-  const scale = lo !== null && hi !== null && lo < hi ? { lo, hi } : null;
+  const scale = useMemo(() => (lo !== null && hi !== null && lo < hi ? { lo, hi } : null), [lo, hi]);
   const bunit = v.view?.bunit ?? null;
 
   useEffect(() => {
@@ -58,7 +57,7 @@ function PvPlot({ d, v }: { d: PvDiagram; v: Viewer }) {
     for (let r = 0; r < nc; r++) rows.set(d.values.subarray((flip ? r : nc - 1 - r) * no, (flip ? r : nc - 1 - r) * no + no), (nc - 1 - r) * no);
     const px = paintPixels(rows, no, nc, scale, lut(v.colormap), v.stretch, NODATA);
     c.getContext("2d")?.putImageData(new ImageData(px as Uint8ClampedArray<ArrayBuffer>, no, nc), 0, 0);
-  }, [d, scale?.lo, scale?.hi, v.colormap, v.stretch, flip]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [d, no, nc, scale, v.colormap, v.stretch, flip]);
 
   function pick(e: MouseEvent<HTMLDivElement>) {
     const r = e.currentTarget.getBoundingClientRect();
@@ -150,13 +149,15 @@ export function PvPanel({ v }: { v: Viewer }) {
   const target = targets.find((t) => t.unit === unit);
   const needsConvention = Boolean(unit && target?.needs_convention);
 
-  useEffect(() => {
+  // The fields follow the path when its points or width change, not when the object is rebuilt with the same ones.
+  const followPath = useEffectEvent(() => {
     setText(toText(path));
     if (path) {
       setWidth(String(path.width));
       setWidthUnit(path.widthUnit);
     }
-  }, [path?.points, path?.width, path?.widthUnit]); // eslint-disable-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => followPath(), [path?.points, path?.width, path?.widthUnit]);
   useEffect(() => {
     setLast(channels > 0 ? String(channels) : "");
     setFirst("1");

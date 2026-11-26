@@ -279,6 +279,7 @@ func (s *Server) rohsaClassMaps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var full map[string]json.RawMessage
+	// res.Summary was parsed above; this keeps its raw fields
 	_ = json.Unmarshal(res.Summary, &full)
 	type registered struct {
 		Dataset catalog.Dataset `json:"dataset"`
@@ -336,6 +337,7 @@ func (s *Server) rohsaClassMaps(w http.ResponseWriter, r *http.Request) {
 
 func rawString(r json.RawMessage) string {
 	var s string
+	// a value that is not a JSON string reads as empty
 	_ = json.Unmarshal(r, &s)
 	return s
 }

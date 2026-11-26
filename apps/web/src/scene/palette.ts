@@ -10,6 +10,14 @@ export const OVERLAY_COLORS = {
   magenta: "#f07ad8",
   lime: "#9be36a",
 } as const;
+/**
+ * Inks for figures and canvases, which have no CSS. A figure is dark whatever theme the app shows, so these are the dark theme's
+ * --text, --text-2, --bg-1 and --line-strong (a test keeps them equal).
+ */
+export const INK = "#e7ecf2";
+export const INK2 = "#a7b3c1";
+export const BG = "#0f151c";
+export const FRAME = "#2f3d4c";
 export type OverlayColor = keyof typeof OVERLAY_COLORS;
 export const OVERLAY_COLOR_NAMES = Object.keys(OVERLAY_COLORS) as OverlayColor[];
 
