@@ -66,7 +66,8 @@ import (
 // Version 36: a figure may be a sky view, a figure of kind 'sky' with no dataset (figures.kind admits 'sky'; ADR 0072).
 // Version 37: standing approvals for relayed run requests (relay_grants, relay_grant_uses, relayed_requests.grant_id, .grant_state,
 // .grant_note on the key holder's computer; run_requests.grant_id on the group server; ADR 0074).
-const Version = 37
+// Version 38: an orientation declaration copied from another run's (interpretations.apply_id, .applied_from, .applied_by; ADR 0010 amendment).
+const Version = 38
 
 // A Migration upgrades a catalog from version From-1 to From. Steps run in order, each in its own transaction.
 type Migration struct {
@@ -117,6 +118,7 @@ var migrations = []Migration{
 	{To: 35, Name: "tool profiles and generic output roles", Up: toolProfiles},
 	{To: 36, Name: "sky figures", Up: skyFigures},
 	{To: 37, Name: "standing approvals", Up: relayGrants},
+	{To: 38, Name: "applied orientation declarations", Up: appliedInterpretations},
 }
 
 // AccountsTables are the group server's accounts (ADR 0050 section 2, slice 2). An account carries no credential itself: a way to
@@ -739,6 +741,27 @@ func orientationFrameAndQuantity(tx *sql.Tx) error {
 	}
 	for _, c := range []string{"frame", "quantity"} {
 		if err := AddColumn(tx, "interpretations", c, "TEXT"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AppliedColumns are the columns that say an orientation declaration was copied from another dataset's by one "apply to the other
+// runs" (ADR 0010 amendment): the apply it belongs to, the dataset it was copied from and the account that applied it. All three are
+// NULL for a declaration made directly, and a later direct declaration resets them, so a row that still carries its apply id has not
+// been edited since.
+var AppliedColumns = []struct{ Name, Def string }{{"apply_id", "TEXT"}, {"applied_from", "INTEGER"}, {"applied_by", "TEXT"}}
+
+// appliedInterpretations adds AppliedColumns; every existing row was made directly. A catalog without the table (never opened by the
+// catalog package) needs nothing.
+func appliedInterpretations(tx *sql.Tx) error {
+	var n int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='interpretations'`).Scan(&n); err != nil || n == 0 {
+		return err
+	}
+	for _, c := range AppliedColumns {
+		if err := AddColumn(tx, "interpretations", c.Name, c.Def); err != nil {
 			return err
 		}
 	}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { addLocation, ApiError, deleteCatalogDeclaration, getAvailability, getNewer, isCatalog, isHealpix, isImage, listDatasets, putCatalogDeclaration, registerDataset, sameContentOffer, setInterpretation, setNature, setUnit } from "../api/catalog";
-import type { CatalogDataset, CatalogDeclarationRequest, Dataset, ImageDataset, InterpretationRequest, Nature, NewerResults, Problem } from "../api/catalog";
+import { addLocation, ApiError, applyDeclaration, previewApply, undoApply, deleteCatalogDeclaration, getAvailability, getNewer, isCatalog, isHealpix, isImage, listDatasets, putCatalogDeclaration, registerDataset, sameContentOffer, setInterpretation, setNature, setUnit } from "../api/catalog";
+import type { ApplyScopeName, CatalogDataset, CatalogDeclarationRequest, Dataset, ImageDataset, InterpretationRequest, Nature, NewerResults, Problem } from "../api/catalog";
 import type { Offer } from "./SameContentOffer";
 import { listHosts } from "../api/hosts";
 import { listJobs } from "../api/jobs";
@@ -97,6 +97,21 @@ export function useCatalog() {
     }
   }, []);
 
+  /** Apply one declaration to the other runs, and undo it. Both reload the datasets: the declarations they write or remove show in the inspector. */
+  const applyActions = useMemo(() => ({
+    preview: previewApply,
+    apply: async (sourceId: number, scope: ApplyScopeName, targetIds: number[]) => {
+      const r = await applyDeclaration(sourceId, scope, targetIds);
+      setDatasets(await listDatasets({ archived: "all" }));
+      return r;
+    },
+    undo: async (applyId: string) => {
+      const r = await undoApply(applyId);
+      setDatasets(await listDatasets({ archived: "all" }));
+      return r;
+    },
+  }), []);
+
   /** Import a run folder; returns an error text, or null. Refreshes datasets, because the import registers outputs and may declare one. */
   const importRunResult = useCallback(async (path: string, hostId?: number): Promise<{ id: number } | { error: string }> => {
     try {
@@ -164,5 +179,5 @@ export function useCatalog() {
   const selectedCatalog = selected && isCatalog(selected) ? selected : null;
   const selectedHealpix = selected && isHealpix(selected) ? selected : null;
 
-  return { problems, newer, offer, dismissOffer: () => setOffer(null), addAsLocation, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, selectedHealpix, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, importRunResult, declare, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
+  return { problems, newer, offer, dismissOffer: () => setOffer(null), addAsLocation, declareNature, declareCatalog, catalogCount, selectedImage, selectedCatalog, selectedHealpix, declareUnit, jobs, refreshRuns, hosts, refreshHosts, refreshDatasets, runs, importRunFolder, importRunResult, declare, applyActions, datasets, allDatasets, selectedId, select: setSelectedId, loading, error, register, selected };
 }

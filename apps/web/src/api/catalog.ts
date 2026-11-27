@@ -90,6 +90,21 @@ export type InterpretationRequest =
 export const setInterpretation = (id: number, body: InterpretationRequest) =>
   call<Dataset>(`/api/datasets/${id}/interpretation`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
+export type ApplyPreview = Schemas["ApplyPreview"];
+export type ApplyRow = Schemas["ApplyRow"];
+export type ApplyResult = Schemas["ApplyResult"];
+export type ApplyUndoResult = Schemas["ApplyUndoResult"];
+export type ApplyScopeName = Schemas["ApplyScope"]["scope"];
+
+/** What copying this dataset's declaration to the other runs would do. Reads the catalog only, never a file. */
+export const previewApply = (id: number, scope?: ApplyScopeName) =>
+  call<ApplyPreview>(`/api/datasets/${id}/interpretation/apply-preview${scope ? `?scope=${scope}` : ""}`);
+/** Copy the declaration to the previewed targets; the server checks each again. Nothing is written without `confirm`. */
+export const applyDeclaration = (sourceId: number, scope: ApplyScopeName, targetIds: number[]) =>
+  call<ApplyResult>("/api/interpretations/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId, scope, targetIds, confirm: true }) });
+export const undoApply = (applyId: string) =>
+  call<ApplyUndoResult>(`/api/interpretations/apply/${encodeURIComponent(applyId)}/undo`, { method: "POST" });
+
 /** Declare (or withdraw) the unit of a file whose header has no BUNIT. The file and its header facts are not changed. */
 export const setUnit = (id: number, body: { unit: string } | { clear: true }) =>
   call<Dataset>(`/api/datasets/${id}/unit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

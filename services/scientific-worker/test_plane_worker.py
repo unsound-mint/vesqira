@@ -462,6 +462,17 @@ class PlaneWorker(unittest.TestCase):
         self.assertFalse(self.axial("vgt_psi_deg.fits", unit="deg")["stats"]["values_fit_radians"])
         self.assertFalse(self.axial("vgt_psi_rad.fits", unit="rad")["stats"]["values_fit_radians"])
 
+    def test_the_reply_carries_the_extremes_of_the_values_in_the_declared_unit(self):
+        # bulk declaring ("apply to the other runs") refuses a unit the values cannot be in from this alone, without reading the plane
+        rad = self.axial("vgt_psi_rad.fits", unit="rad")["stats"]
+        deg = self.axial(unit="deg")["stats"]
+        self.assertGreaterEqual(rad["value_min"], 0.0)
+        self.assertLessEqual(rad["value_max"], math.pi + 1e-6)
+        self.assertGreater(deg["value_max"], 2 * math.pi)             # degrees read as radians would be far beyond 2 pi
+        self.assertAlmostEqual(deg["value_max"], math.degrees(rad["value_max"]), places=3)
+        wrong = self.axial(unit="rad")["stats"]                       # the degrees file declared as radians
+        self.assertEqual(wrong["value_max"], deg["value_max"])
+
     def test_radians_and_degrees_agree(self):
         a = self.axial(unit="deg")["stats"]["unweighted"]
         b = self.axial("vgt_psi_rad.fits", unit="rad")["stats"]["unweighted"]

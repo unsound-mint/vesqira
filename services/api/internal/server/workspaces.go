@@ -123,7 +123,8 @@ var childParams = map[string]string{"datasets/lid": "datasets/id", "boards/pos":
 // workspace (the admin's routes), a member of the actor's current workspace (the handler scopes it), a support bundle held in
 // memory for the admin who made it.
 // A picture a linked instance uploads (push/sha) is named by the hash of its bytes and stored in the token's workspace only.
-var unscopedParams = map[string]bool{"accounts/id": true, "account/id": true, "workspaces/id": true, "members/id": true, "support/id": true, "push/sha": true}
+// An apply id (interpretations/applyId) is a random name; the undo deletes only rows of datasets in the actor's workspace.
+var unscopedParams = map[string]bool{"accounts/id": true, "account/id": true, "workspaces/id": true, "members/id": true, "support/id": true, "push/sha": true, "interpretations/applyId": true}
 
 // patternParams returns the "<segment>/<param>" keys of a route pattern.
 func patternParams(pattern string) []string {

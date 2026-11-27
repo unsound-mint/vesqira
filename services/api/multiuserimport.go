@@ -530,6 +530,9 @@ func importInto(tx *sql.Tx, sp *importSpec, now int64) (*importReport, error) {
 				if v := r.get("reliability_id"); v != nil {
 					r.set("reliability_id", im.to(im.ds, r.num("reliability_id"), "the reliability map of dataset "+strconv.FormatInt(r.num("dataset_id"), 10)))
 				}
+				if v := r.get("applied_from"); v != nil {
+					r.set("applied_from", im.to(im.ds, r.num("applied_from"), "the dataset the declaration of dataset "+strconv.FormatInt(r.num("dataset_id"), 10)+" was copied from"))
+				}
 				return nil
 			}
 		}
